@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Job Command Centre</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: light;
+        --paper:#faf8f3; --card:#fffdf8; --ink:#1c1a17; --muted:#6f6658; --line:#ece6da;
+        --gold:#c9a227; --serif:"Fraunces",ui-serif,Georgia,serif;
+        --sans:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace; --chip:#f3efe6;
+        --applied:#3b6ea5; --screening:#b08968; --interview:#c9a227; --offer:#5c7a53; --rejected:#a23b3b; --withdrawn:#6f6658;
+      }
+      [data-theme="dark"]{color-scheme:dark;--paper:#15130d;--card:#1e1b14;--ink:#f1ead9;--muted:#a99f8b;--line:#2e2a20;--gold:#e0bd4a;--chip:#2c281f;}
+      *{box-sizing:border-box;}
+      body{margin:0;min-height:100dvh;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;}
+      .wrap{max-width:1340px;margin:0 auto;padding:clamp(1rem,3vw,2rem);}
+      .top{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem;}
+      .eyebrow{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:600;}
+      h1{font-family:var(--serif);font-weight:500;font-size:clamp(1.6rem,4vw,2.3rem);letter-spacing:-.015em;margin:.2rem 0 0;}
+      .pill{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:.4rem .8rem;}
+      .pill button{font:inherit;cursor:pointer;border:none;background:none;color:var(--ink);text-decoration:underline;padding:0;}
+      .pill #theme{text-decoration:none;font-size:.95rem;}
+      .bar{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-bottom:1.1rem;}
+      .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:.6rem .9rem;}
+      .stat .n{font-family:var(--serif);font-size:1.5rem;line-height:1;}
+      .stat .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:.3rem;}
+      .addbtn{margin-left:auto;padding:.7rem 1.3rem;font:inherit;font-weight:600;cursor:pointer;border:none;border-radius:999px;background:var(--gold);color:#1c1a17;}
+      .board{display:grid;grid-template-columns:repeat(6,minmax(190px,1fr));gap:.8rem;overflow-x:auto;padding-bottom:1rem;}
+      .col{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:.7rem;min-height:120px;}
+      .col h3{font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;margin:.1rem .2rem .7rem;display:flex;align-items:center;gap:.4rem;}
+      .col h3 .dot{width:9px;height:9px;border-radius:50%;}
+      .col h3 .ct{margin-left:auto;color:var(--muted);font-weight:600;}
+      .card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.7rem .75rem;margin-bottom:.6rem;cursor:pointer;transition:transform .12s,box-shadow .12s;}
+      .card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(70,55,25,.08);}
+      .card .co{font-weight:700;font-size:.92rem;}
+      .card .ro{color:var(--muted);font-size:.8rem;margin-top:.1rem;}
+      .card .meta{display:flex;align-items:center;gap:.4rem;margin-top:.55rem;flex-wrap:wrap;}
+      .score{font-variant-numeric:tabular-nums;font-weight:700;font-size:.74rem;padding:.12rem .45rem;border-radius:999px;color:#fff;}
+      .tag{font-size:.68rem;color:var(--muted);background:var(--chip);border-radius:999px;padding:.12rem .5rem;}
+      .na{font-size:.74rem;color:var(--muted);margin-top:.5rem;border-top:1px dashed var(--line);padding-top:.4rem;}
+      .colempty{color:var(--muted);font-size:.78rem;text-align:center;padding:1.2rem .4rem;opacity:.7;}
+      /* modal */
+      .ovl{position:fixed;inset:0;background:rgba(20,16,8,.5);display:grid;place-items:center;padding:1rem;z-index:50;}
+      .modal{background:var(--card);border:1px solid var(--line);border-radius:20px;max-width:600px;width:100%;max-height:88dvh;overflow:auto;padding:1.5rem;}
+      .modal h2{font-family:var(--serif);font-weight:500;margin:0;font-size:1.5rem;}
+      .modal .ro2{color:var(--muted);margin:.2rem 0 1rem;}
+      .modal label{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:1rem 0 .3rem;}
+      .modal .val{white-space:pre-wrap;}
+      .chips{display:flex;gap:.35rem;flex-wrap:wrap;}
+      .modal select,.modal textarea,.modal input{width:100%;font:inherit;padding:.6rem .7rem;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);}
+      .modal textarea{min-height:160px;resize:vertical;font-family:var(--mono);font-size:.82rem;}
+      .row2{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1.3rem;}
+      .btn{padding:.6rem 1.1rem;font:inherit;font-weight:600;cursor:pointer;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);}
+      .btn.primary{background:var(--gold);border-color:var(--gold);color:#1c1a17;}
+      .btn.danger{color:#a23b3b;}
+      .btn:disabled{opacity:.5;cursor:default;}
+      .x{float:right;cursor:pointer;border:none;background:none;font-size:1.3rem;color:var(--muted);}
+      .center{min-height:80dvh;display:grid;place-items:center;text-align:center;}
+      .center button{margin-top:1.2rem;padding:.75rem 1.6rem;font:inherit;font-weight:600;cursor:pointer;border:none;border-radius:999px;background:var(--gold);color:#1c1a17;}
+      .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;}
+      @keyframes sp{to{transform:rotate(360deg);}}
+    </style>
+  </head>
+  <body>
+    <div id="app"><div class="center"><div><p>Loading…</p></div></div></div>
+    <div id="modal"></div>
+    <script>
+      (function(){
+        var cfg=window.__LEMMA_CONFIG__||{};
+        var base=(cfg.apiUrl||window.location.origin).replace(/\/$/,"");
+        var s=document.createElement("script");
+        s.src=base+"/public/sdk/lemma-client.js";
+        s.onload=boot; s.onerror=function(){fatal("Couldn't load the Lemma SDK from "+s.src);};
+        document.head.appendChild(s);
+      })();
+
+      var STAGES=[
+        {k:"applied",label:"Applied",c:"var(--applied)"},
+        {k:"screening",label:"Screening",c:"var(--screening)"},
+        {k:"interview",label:"Interview",c:"var(--interview)"},
+        {k:"offer",label:"Offer",c:"var(--offer)"},
+        {k:"rejected",label:"Rejected",c:"var(--rejected)"},
+        {k:"withdrawn",label:"Withdrawn",c:"var(--withdrawn)"}
+      ];
+      var AGENT="parser_scorer", TABLE="applications";
+      var GRANT_KEYS=["gmail_read","gmail_write","calendar_write"];
+      var OUTREACH="outreach_writer", OUTREACH_MODE={};
+      var ORG_ID="019eff08-dcc4-77e7-b25e-f68201fb0810";
+      var GMAIL_AUTH_CONFIG_ID="019f04d3-26fb-742a-9b9c-993a6ae55305";
+      var GMAIL_CONNECTED=null;
+      var client, USER=null, ROWS=[];
+
+      function $(id){return document.getElementById(id);}
+      function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+      function field(r,k){return (r&&r.data&&r.data[k]!=null)?r.data[k]:(r?r[k]:undefined);}
+      function listOf(resp){return (resp&&(resp.items||resp.data))||(Array.isArray(resp)?resp:[]);}
+      function fatal(msg){$("app").innerHTML='<div class="center"><div><h1>⚠</h1><p>'+esc(msg)+'</p></div></div>';}
+      function theme(){try{return localStorage.getItem("lemma-app-theme")||"light";}catch(e){return "light";}}
+      function applyTheme(t){document.documentElement.setAttribute("data-theme",t);try{localStorage.setItem("lemma-app-theme",t);}catch(e){} var b=$("theme");if(b)b.textContent=t==="dark"?"☀":"☾";}
+      function scoreColor(n){n=Number(n)||0;return n>=70?"#5c7a53":n>=45?"#c9a227":"#a23b3b";}
+      function asArray(v){if(Array.isArray(v))return v;if(typeof v==="string"){try{var p=JSON.parse(v);return Array.isArray(p)?p:[v];}catch(e){return v?[v]:[];}}return [];}
+
+      async function boot(){
+        applyTheme(theme());
+        try{
+          client=new window.LemmaClient.LemmaClient({timeoutMs:120000});
+          var auth=await client.initialize();
+          if(auth.status!=="authenticated") return signIn();
+          USER=auth.user;
+          await ensurePermissions();
+          await load(); render();
+        }catch(e){fatal((e&&e.message)||"Something went wrong.");}
+      }
+      function signIn(){
+        $("app").innerHTML='<div class="center"><div><div class="eyebrow">Job Command Centre</div><h1>Welcome.</h1><p style="color:var(--muted)">Sign in to open your pipeline.</p><button id="si">Sign in</button></div></div>';
+        $("si").onclick=function(){client.auth.redirectToAuth();};
+      }
+      async function load(){
+        var resp=await client.records.list(TABLE,{limit:200});
+        ROWS=listOf(resp);
+      }
+      // First-time onboarding: seed a permissions row per grant, defaulting to false.
+      // Idempotent — only creates keys that don't already exist.
+      async function ensurePermissions(){
+        try{
+          var resp=await client.records.list("permissions",{limit:50});
+          var have={};
+          listOf(resp).forEach(function(r){var k=field(r,"grant_key"); if(k)have[k]=true;});
+          for(var i=0;i<GRANT_KEYS.length;i++){
+            var k=GRANT_KEYS[i];
+            if(!have[k]){ try{ await client.records.create("permissions",{grant_key:k,granted:false}); }catch(e){} }
+          }
+        }catch(e){}
+      }
+
+      function render(){
+        var byStage={}; STAGES.forEach(function(s){byStage[s.k]=[];});
+        ROWS.forEach(function(r){var st=field(r,"status")||"applied"; (byStage[st]||(byStage[st]=[])).push(r);});
+        var total=ROWS.length;
+        var active=ROWS.filter(function(r){var s=field(r,"status");return s!=="rejected"&&s!=="withdrawn";}).length;
+        var scores=ROWS.map(function(r){return Number(field(r,"match_score"));}).filter(function(n){return !isNaN(n);});
+        var avg=scores.length?Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length):"—";
+        var interviews=byStage["interview"].length+byStage["offer"].length;
+
+        var who=(USER&&(USER.name||USER.email))||"";
+        var h='<div class="wrap"><div class="top"><div><div class="eyebrow">Job Command Centre</div><h1>Your pipeline</h1></div>'+
+          '<div class="pill"><span style="color:var(--gold)">●</span> '+esc(who)+' · <button id="out">sign out</button> · <button id="theme" title="Toggle theme">☾</button></div></div>';
+
+        h+='<div class="bar">'+
+          stat(total,"applications")+stat(active,"active")+stat(avg,"avg match")+stat(interviews,"interview+")+
+          '<button class="addbtn" id="add">+ Add job</button></div>';
+
+        h+='<div class="board">';
+        STAGES.forEach(function(s){
+          var list=byStage[s.k]||[];
+          h+='<div class="col"><h3><span class="dot" style="background:'+s.c+'"></span>'+s.label+'<span class="ct">'+list.length+'</span></h3>';
+          if(!list.length){h+='<div class="colempty">—</div>';}
+          else{list.sort(function(a,b){return (Number(field(b,"match_score"))||0)-(Number(field(a,"match_score"))||0);})
+            .forEach(function(r){h+=cardHtml(r);});}
+          h+='</div>';
+        });
+        h+='</div></div>';
+        $("app").innerHTML=h; applyTheme(theme());
+        $("out").onclick=function(){client.auth.signOut().then(function(){location.reload();});};
+        $("theme").onclick=function(){applyTheme(theme()==="dark"?"light":"dark");};
+        $("add").onclick=addModal;
+        document.querySelectorAll("[data-id]").forEach(function(el){el.onclick=function(){detailModal(el.getAttribute("data-id"));};});
+      }
+      function stat(n,l){return '<div class="stat"><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>';}
+      function cardHtml(r){
+        var id=field(r,"id"),sc=field(r,"match_score"),sub=field(r,"sub_status"),na=field(r,"next_action"),fu=field(r,"follow_up_date");
+        var h='<div class="card" data-id="'+esc(id)+'"><div class="co">'+esc(field(r,"company")||"—")+'</div>'+
+          '<div class="ro">'+esc(field(r,"role")||"")+'</div><div class="meta">';
+        if(sc!=null&&sc!=="")h+='<span class="score" style="background:'+scoreColor(sc)+'">'+esc(sc)+'</span>';
+        if(sub)h+='<span class="tag">'+esc(sub)+'</span>';
+        if(fu)h+='<span class="tag">⏰ '+esc(String(fu).slice(0,10))+'</span>';
+        h+='</div>';
+        if(na)h+='<div class="na">'+esc(na)+'</div>';
+        h+='</div>';
+        return h;
+      }
+
+      function closeModal(){$("modal").innerHTML="";}
+      function detailModal(id){
+        var r=ROWS.filter(function(x){return String(field(x,"id"))===String(id);})[0]; if(!r)return;
+        var skills=asArray(field(r,"must_have_skills")), topics=asArray(field(r,"suggested_topics"));
+        var opts=STAGES.map(function(s){return '<option value="'+s.k+'"'+(field(r,"status")===s.k?" selected":"")+'>'+s.label+'</option>';}).join("");
+        var h='<div class="ovl" id="ovl"><div class="modal"><button class="x" id="cx">×</button>'+
+          '<h2>'+esc(field(r,"company")||"—")+'</h2><div class="ro2">'+esc(field(r,"role")||"")+'</div>';
+        var sc=field(r,"match_score");
+        if(sc!=null&&sc!=="")h+='<label>Match score</label><div><span class="score" style="background:'+scoreColor(sc)+'">'+esc(sc)+' / 100</span></div>';
+        if(skills.length){h+='<label>Required skills</label><div class="chips">'+skills.map(function(s){return '<span class="tag">'+esc(s)+'</span>';}).join("")+'</div>';}
+        if(field(r,"resume_gaps")){h+='<label>Resume gaps</label><div class="val">'+esc(field(r,"resume_gaps"))+'</div>';}
+        if(topics.length){h+='<label>Prep while you wait</label><div class="chips">'+topics.map(function(s){return '<span class="tag">'+esc(s)+'</span>';}).join("")+'</div>';}
+        if(field(r,"next_action")){h+='<label>Next action</label><div class="val">'+esc(field(r,"next_action"))+'</div>';}
+        h+=outreachSection(r,id);
+        h+='<div id="impwrap" style="margin-top:1.1rem;border-top:1px dashed var(--line);padding-top:.85rem">'+
+          '<label style="margin-top:0">Resume improvements</label>'+
+          '<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">'+
+          '<span style="color:var(--muted);font-size:.86rem">Have you made the suggested fixes to your resume?</span>'+
+          '<button class="btn" id="impyes">Yes, I updated it</button></div>'+
+          '<div id="impbox" style="display:none;margin-top:.7rem">'+
+          '<textarea id="imprz" placeholder="Paste your updated resume — the agent re-checks gaps for this same job…"></textarea>'+
+          '<div class="row2" style="margin-top:.5rem"><button class="btn primary" id="imprecheck">Re-check gaps &amp; next action</button></div>'+
+          '<div id="impstatus" style="margin-top:.6rem;color:var(--muted);font-size:.82rem"></div></div></div>';
+        h+='<label>Stage</label><select id="stg">'+opts+'</select>';
+        h+='<label>Sub-status</label><input id="sub" value="'+esc(field(r,"sub_status")||"")+'" placeholder="e.g. round_1, test, recruiter_call"/>';
+        h+='<label>Contact name</label><input id="cname" value="'+esc(field(r,"contact_name")||"")+'" placeholder="Recruiter / referral name"/>';
+        h+='<label>Contact email (recipient for Send)</label><input id="cemail" value="'+esc(field(r,"contact_email")||"")+'" placeholder="name@company.com"/>';
+        if(field(r,"jd_text")){h+='<label>Job description</label><div class="val" style="font-size:.82rem;color:var(--muted)">'+esc(field(r,"jd_text"))+'</div>';}
+        h+='<div class="row2"><button class="btn primary" id="save">Save</button><button class="btn danger" id="del">Delete</button><button class="btn" id="close2">Close</button></div>';
+        h+='</div></div>';
+        $("modal").innerHTML=h;
+        $("cx").onclick=closeModal; $("close2").onclick=closeModal;
+        $("ovl").onclick=function(e){if(e.target===$("ovl"))closeModal();};
+        $("save").onclick=async function(){
+          this.disabled=true;this.textContent="Saving…";
+          try{await client.records.update(TABLE,id,{status:$("stg").value,sub_status:$("sub").value,contact_name:$("cname").value,contact_email:$("cemail").value});await load();closeModal();render();}
+          catch(e){alert("Save failed: "+(e&&e.message));this.disabled=false;this.textContent="Save";}
+        };
+        $("del").onclick=async function(){
+          if(!confirm("Delete this application?"))return;
+          this.disabled=true;
+          try{await client.records.delete(TABLE,id);await load();closeModal();render();}
+          catch(e){alert("Delete failed: "+(e&&e.message));this.disabled=false;}
+        };
+        $("impyes").onclick=function(){$("impbox").style.display="block";$("imprz").focus();};
+        $("imprecheck").onclick=async function(){
+          var nrz=$("imprz").value.trim(); if(!nrz){$("imprz").focus();return;}
+          this.disabled=true; var ist=$("impstatus");
+          ist.innerHTML='<span class="spin"></span> Re-evaluating against the job description…';
+          var oldGaps=String(field(r,"resume_gaps")||"");
+          var jd=String(field(r,"jd_text")||"");
+          var msg="The operator has improved their resume for an EXISTING application — UPDATE mode, no new rows. "+
+            "Application record id: "+id+". Re-assess the updated resume against the job description and update ONLY "+
+            "resume_gaps and next_action on that applications row by id. Do NOT create new rows and do NOT change "+
+            "company, role, status, sub_status, match_score or resume_id.\n\nJOB DESCRIPTION:\n"+jd+"\n\nUPDATED RESUME:\n"+nrz;
+          try{
+            await client.agents.run(AGENT,msg);
+            var ok=await pollChange(id,"resume_gaps",oldGaps,90000);
+            if(ok){await load();render();detailModal(id);}
+            else{ist.innerHTML="Still working — close and reopen the card in a moment to see updated gaps.";this.disabled=false;}
+          }catch(e){ist.innerHTML="Failed: "+esc((e&&e.message)||"error");this.disabled=false;}
+        };
+        wireOutreach(r,id);
+      }
+
+      function outreachSection(r,id){
+        var os=field(r,"outreach_status")||"none";
+        var hasDraft=!!field(r,"draft_message");
+        var h='<div id="outwrap" style="margin-top:1.1rem;border-top:1px dashed var(--line);padding-top:.85rem">'+
+          '<label style="margin-top:0">Outreach</label>';
+        if(field(r,"email_subject"))h+='<div style="font-weight:700;margin-bottom:.35rem">'+esc(field(r,"email_subject"))+'</div>';
+        if(hasDraft){
+          h+='<div class="val" style="background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:.7rem">'+esc(field(r,"draft_message"))+'</div>';
+          if(field(r,"cover_letter"))h+='<details style="margin-top:.5rem"><summary style="cursor:pointer;color:var(--muted);font-size:.85rem">Cover letter</summary><div class="val" style="margin-top:.4rem;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:.7rem">'+esc(field(r,"cover_letter"))+'</div></details>';
+          var badge=os==="sent"?"✓ sent":os==="approved"?"✓ approved — ready to send":"awaiting your review";
+          h+='<div style="margin-top:.5rem;font-size:.8rem;color:var(--muted)">Status: '+esc(badge)+'</div>';
+          if(os==="drafted"){
+            // Step 1: review the draft. No send option yet — approve first.
+            h+='<div class="row2"><button class="btn primary" id="approve">Approve draft</button><button class="btn" id="oedit">Edit</button><button class="btn" id="regen">Regenerate</button><button class="btn danger" id="reject">Reject</button></div>';
+          }else if(os==="approved"){
+            // Step 2: only AFTER approval do we offer to send.
+            h+='<div class="row2"><button class="btn primary" id="send">Send email</button><button class="btn" id="oedit">Edit</button><button class="btn" id="regen">Regenerate</button></div>';
+          }else if(os==="sent"){
+            h+='<div class="row2"><button class="btn" id="regen">Draft again</button></div>';
+          }
+        }else{
+          h+='<div style="color:var(--muted);font-size:.86rem;margin-bottom:.5rem">Generate a tailored recruiter email + cover letter for this role. You review and approve before anything is sent.</div>'+
+            '<div class="row2"><button class="btn primary" id="gendraft">Generate outreach</button></div>';
+        }
+        h+='<div id="outstatus" style="margin-top:.6rem;color:var(--muted);font-size:.82rem"></div></div>';
+        return h;
+      }
+
+      function wireOutreach(r,id){
+        function gen(){
+          var ost=$("outstatus"); ost.innerHTML='<span class="spin"></span> Drafting email &amp; cover letter… (~30–60s)';
+          var oldDraft=String(field(r,"draft_message")||"");
+          var msg="Draft outreach for application record id: "+id+". Read that application, its linked resume_data (by resume_id), and user_profile. Write email_subject, draft_message (the recruiter email) and cover_letter, and set outreach_status to 'drafted'. Update ONLY that applications row by id; do not change status or create new rows.";
+          client.agents.run(OUTREACH,msg).then(function(){
+            return pollChange(id,"draft_message",oldDraft,90000);
+          }).then(function(ok){
+            if(ok){load().then(function(){render();detailModal(id);});}
+            else{ost.innerHTML="Still drafting — reopen the card shortly.";}
+          }).catch(function(e){ost.innerHTML="Failed: "+esc((e&&e.message)||"error");});
+        }
+        if($("gendraft"))$("gendraft").onclick=gen;
+        if($("regen"))$("regen").onclick=gen;
+        if($("approve"))$("approve").onclick=async function(){
+          this.disabled=true;
+          try{await client.records.update(TABLE,id,{outreach_status:"approved"});await load();render();detailModal(id);}
+          catch(e){$("outstatus").innerHTML="Failed: "+esc((e&&e.message)||"error");this.disabled=false;}
+        };
+        if($("reject"))$("reject").onclick=async function(){
+          this.disabled=true;
+          try{await client.records.update(TABLE,id,{outreach_status:"none",draft_message:"",cover_letter:"",email_subject:""});await load();render();detailModal(id);}
+          catch(e){alert("Failed: "+(e&&e.message));this.disabled=false;}
+        };
+        if($("oedit"))$("oedit").onclick=function(){
+          var box=document.getElementById("outwrap");
+          var cur=String(field(r,"draft_message")||"");
+          var ta=document.createElement("textarea"); ta.value=cur; ta.id="editta";
+          var save=document.createElement("button"); save.className="btn primary"; save.textContent="Save draft"; save.style.marginTop=".5rem";
+          box.appendChild(ta); box.appendChild(save); ta.focus();
+          save.onclick=async function(){
+            this.disabled=true;
+            try{await client.records.update(TABLE,id,{draft_message:$("editta").value});await load();render();detailModal(id);}
+            catch(e){alert("Save failed: "+(e&&e.message));this.disabled=false;}
+          };
+        };
+        if($("send"))$("send").onclick=async function(){
+          this.disabled=true; var ost=$("outstatus");
+          var cemail=(($("cemail")&&$("cemail").value)||field(r,"contact_email")||"").trim();
+          var cname=(($("cname")&&$("cname").value)||field(r,"contact_name")||"").trim();
+          if(!cemail){ost.innerHTML="Add a recipient (contact email) in the field above, then click Send.";this.disabled=false;return;}
+          // If we haven't confirmed Gmail is connected, open a tab now (in the click
+          // gesture) so we can redirect it to Google's consent without popup-blocking.
+          var authWin=(GMAIL_CONNECTED===true)?null:window.open("about:blank","_blank");
+          ost.innerHTML='<span class="spin"></span> Saving recipient &amp; sending via Gmail… (can take up to ~60s)';
+          try{
+            await client.records.update(TABLE,id,{contact_email:cemail,contact_name:cname});
+            var res=await client.functions.run("send_email",{input:{application_id:id}});
+            var out=(res&&(res.output_data||res.result||res.data))||res;
+            if(out&&out.status==="sent"){ GMAIL_CONNECTED=true; if(authWin)authWin.close(); await load(); render(); detailModal(id); }
+            else if(out&&out.status==="needs_auth"){
+              ost.innerHTML='<span class="spin"></span> Opening Google authorization…';
+              var url=await gmailAuthUrl();
+              if(url){ if(authWin){authWin.location=url;} else {window.open(url,"_blank","noopener");} }
+              else if(authWin){authWin.close();}
+              ost.innerHTML='Approve Gmail access in the opened tab, then click <b>Send</b> again.';
+              this.disabled=false;
+            }else{ if(authWin)authWin.close(); ost.innerHTML="Couldn't send: "+esc((out&&out.message)||"unknown error"); this.disabled=false; }
+          }catch(e){ if(authWin)authWin.close(); ost.innerHTML="Send failed: "+esc((e&&e.message)||"error"); this.disabled=false; }
+        };
+      }
+
+      async function gmailAuthUrl(){
+        try{
+          var res=await client.request("POST","/organizations/"+ORG_ID+"/connectors/connect-requests",
+            {body:{connector_id:"gmail",auth_config_id:GMAIL_AUTH_CONFIG_ID}});
+          return res&&(res.authorization_url||(res.data&&res.data.authorization_url));
+        }catch(e){return null;}
+      }
+
+      async function gmailWriteGranted(){
+        try{var resp=await client.records.list("permissions",{limit:50});
+          var row=listOf(resp).filter(function(x){return field(x,"grant_key")==="gmail_write";})[0];
+          return !!(row&&field(row,"granted")===true);
+        }catch(e){return false;}
+      }
+      async function setGrant(key,val){
+        var resp=await client.records.list("permissions",{limit:50});
+        var row=listOf(resp).filter(function(x){return field(x,"grant_key")===key;})[0];
+        if(row)await client.records.update("permissions",field(row,"id"),{granted:val,granted_at:new Date().toISOString()});
+        else await client.records.create("permissions",{grant_key:key,granted:val,granted_at:new Date().toISOString()});
+      }
+
+      function addModal(){
+        var h='<div class="ovl" id="ovl"><div class="modal"><button class="x" id="cx">×</button>'+
+          '<h2>Add a job</h2><div class="ro2">Paste the resume you\'re applying with and the job description. The agent stores the resume, scores fit, and creates the card.</div>'+
+          '<label>Resume <span style="text-transform:none;color:var(--muted)">(leave blank to use your Base Resume)</span></label><textarea id="rz" placeholder="Paste the resume text for this application…"></textarea>'+
+          '<label>Job description</label><textarea id="jd" placeholder="Paste the full job description here…"></textarea>'+
+          '<div class="row2"><button class="btn primary" id="go">Parse &amp; add</button><button class="btn" id="close2">Cancel</button></div>'+
+          '<div id="status" style="margin-top:.9rem;color:var(--muted);font-size:.82rem"></div></div></div>';
+        $("modal").innerHTML=h;
+        $("cx").onclick=closeModal; $("close2").onclick=closeModal;
+        $("ovl").onclick=function(e){if(e.target===$("ovl"))closeModal();};
+        $("go").onclick=async function(){
+          var jd=$("jd").value.trim(); if(!jd){$("jd").focus();return;}
+          var rz=$("rz").value.trim();
+          this.disabled=true; var st=$("status");
+          st.innerHTML='<span class="spin"></span> Sending to the agent… this can take ~30–60s.';
+          var before=ROWS.length;
+          try{
+            var msg;
+            if(rz){
+              msg="Add this job. Store this resume as a new resume_data row, then parse the JD, score this resume against it, list gaps, suggest prep topics, and create the application row linked via resume_id.\n\nRESUME:\n"+rz+"\n\nJOB DESCRIPTION:\n"+jd;
+            }else{
+              msg="Add this job. Use my default resume_data row (is_default = true) as the resume — do not ask me for one. Parse the JD, score that resume against it, list gaps, suggest prep topics, and create the application row linked via resume_id.\n\nJOB DESCRIPTION:\n"+jd;
+            }
+            await client.agents.run(AGENT,msg);
+            st.innerHTML='<span class="spin"></span> Agent is parsing &amp; scoring…';
+            var found=await pollNew(before,90000);
+            if(found){closeModal();render();}
+            else{st.innerHTML="Still working — it may appear shortly. Close and refresh in a moment.";this.disabled=false;}
+          }catch(e){st.innerHTML="Failed: "+esc((e&&e.message)||"error");this.disabled=false;}
+        };
+      }
+      async function pollNew(before,timeoutMs){
+        var start=Date.now();
+        while(Date.now()-start<timeoutMs){
+          await new Promise(function(r){setTimeout(r,4000);});
+          try{await load();}catch(e){}
+          if(ROWS.length>before)return true;
+        }
+        return false;
+      }
+      async function pollChange(id,fieldName,oldVal,timeoutMs){
+        var start=Date.now();
+        while(Date.now()-start<timeoutMs){
+          await new Promise(function(r){setTimeout(r,4000);});
+          try{await load();}catch(e){}
+          var r=ROWS.filter(function(x){return String(field(x,"id"))===String(id);})[0];
+          if(r&&String(field(r,fieldName)||"")!==String(oldVal))return true;
+        }
+        return false;
+      }
+    </script>
+  </body>
+</html>

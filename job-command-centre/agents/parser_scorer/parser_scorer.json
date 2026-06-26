@@ -1,0 +1,18 @@
+{
+  "name": "parser_scorer",
+  "description": "Parses a job description and resume, scores resume-vs-JD fit, extracts skills and gaps, and creates/updates the application row.",
+  "instruction": { "$file": "instruction.md" },
+  "toolsets": ["POD"],
+  "visibility": "POD",
+  "agent_runtime": { "profile_id": "system:lemma", "model_name": "kimi-k2.7-code" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "applications",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "datastore_table", "resource_name": "user_profile",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "datastore_table", "resource_name": "resume_data",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "function", "resource_name": "score_match",
+      "permission_ids": ["function.read", "function.execute"] }
+  ] }
+}

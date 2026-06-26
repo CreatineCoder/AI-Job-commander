@@ -1,0 +1,18 @@
+{
+  "name": "user_profile",
+  "primary_key_column": "id",
+  "enable_rls": true,
+  "visibility": "POD",
+  "columns": [
+    { "name": "full_name", "type": "TEXT", "max_length": 160 },
+    { "name": "email", "type": "TEXT", "max_length": 240 },
+    { "name": "phone", "type": "TEXT", "max_length": 40 },
+    { "name": "location", "type": "TEXT", "max_length": 160 },
+    { "name": "headline", "type": "TEXT", "max_length": 240 },
+    { "name": "summary", "type": "TEXT" },
+    { "name": "links", "type": "JSON" },
+    { "name": "target_roles", "type": "JSON" },
+    { "name": "notes", "type": "TEXT" }
+  ],
+  "config": {}
+}

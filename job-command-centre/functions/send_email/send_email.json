@@ -1,0 +1,13 @@
+{
+  "name": "send_email",
+  "description": "Sends an application's drafted email via Gmail (after human approval). Checks for a connected Gmail account; returns needs_auth if not authorized, else sends and marks the application sent.",
+  "type": "API",
+  "visibility": "POD",
+  "code": { "$file": "code.py" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "applications",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "connector", "resource_name": "gmail",
+      "permission_ids": ["connector.use"] }
+  ] }
+}

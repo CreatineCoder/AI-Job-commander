@@ -1,0 +1,12 @@
+{
+  "name": "score_match",
+  "description": "Deterministic resume-vs-JD match score. Takes per-skill judgments (matched/partial/missing + weight) and returns a weighted 0-100 match_score with a breakdown.",
+  "type": "API",         // API = sync request/response; JOB = async background run
+  "visibility": "POD",   // PERSONAL | POD | PUBLIC | RESTRICTED
+  "code": { "$file": "code.py" },
+  "permissions": { "grants": [
+    // Zero access by default — grant every table/folder/app this function touches.
+    // { "resource_type": "datastore_table", "resource_name": "items",
+    //   "permission_ids": ["datastore.table.read", "datastore.record.write"] }
+  ] }
+}

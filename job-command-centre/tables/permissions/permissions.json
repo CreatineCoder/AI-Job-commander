@@ -1,0 +1,14 @@
+{
+  "name": "permissions",
+  "primary_key_column": "id",
+  "enable_rls": true,
+  "visibility": "POD",
+  "columns": [
+    { "name": "grant_key", "type": "ENUM", "required": true,
+      "options": ["gmail_read", "gmail_write", "calendar_write"] },
+    { "name": "granted", "type": "BOOLEAN", "required": true, "default": false },
+    { "name": "granted_at", "type": "DATETIME" },
+    { "name": "notes", "type": "TEXT" }
+  ],
+  "config": {}
+}

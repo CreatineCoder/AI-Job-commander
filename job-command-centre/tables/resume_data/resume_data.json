@@ -1,0 +1,21 @@
+{
+  "name": "resume_data",
+  "primary_key_column": "id",
+  "enable_rls": true,
+  "visibility": "POD",
+  "columns": [
+    { "name": "label", "type": "TEXT", "max_length": 160 },
+    { "name": "is_default", "type": "BOOLEAN", "default": false },
+    { "name": "resume_file", "type": "FILE_PATH" },
+    { "name": "raw_resume_text", "type": "TEXT" },
+    { "name": "skills", "type": "JSON" },
+    { "name": "projects", "type": "JSON" },
+    { "name": "work_experience", "type": "JSON" },
+    { "name": "positions", "type": "JSON" },
+    { "name": "competitions", "type": "JSON" },
+    { "name": "education", "type": "JSON" },
+    { "name": "certifications", "type": "JSON" },
+    { "name": "notes", "type": "TEXT" }
+  ],
+  "config": {}
+}
