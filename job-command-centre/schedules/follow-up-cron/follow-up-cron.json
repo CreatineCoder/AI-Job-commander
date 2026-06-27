@@ -1,0 +1,8 @@
+{
+  "name": "follow-up-cron",
+  "schedule_type": "TIME",
+  "config": { "cron": "0 9 * * *" },
+  "workflow_name": "follow-up-daily",
+  "is_active": true,
+  "visibility": "POD"
+}

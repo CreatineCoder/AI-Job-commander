@@ -32,6 +32,13 @@ primitive (datastores, agents, functions, app, connectors).
   `status` enum (applied/screening/interview/offer/rejected/withdrawn), sub_status, next_action,
   follow_up_date, contact_name, contact_email, email_subject, draft_message, cover_letter,
   `outreach_status` enum (none/drafted/approved/sent), sent_at.
+- **`followups`** (many) — dedicated follow-up tracking, decoupled from applications. Cols:
+  `application_id` (FK→applications.id), `follow_up_date`, `is_followup_sent` (user actually did
+  the follow-up → hides board alarm), `followup_alarm_sent` (reminder email dispatched → dedupe),
+  `last_alarm_at`. One row per application, created/reset by `send_email`. (Note: follow_up fields
+  were REMOVED from `applications` — all follow-up state lives here now.)
+  **The reminder/alarm email ALWAYS goes to `user_profile.email`** (it's a notification to the
+  user themselves) — `run_followups` resolves that recipient; there is no per-application override.
 - **`permissions`** (many) — grant rows gmail_read/gmail_write/calendar_write (boolean granted),
   auto-seeded false on first board load. (Note: this is an app-level toggle table, separate from
   the real OAuth connector state.)
@@ -71,8 +78,9 @@ All linked by Lemma's auto `user_id` (RLS).
   `{timeoutMs:120000}` (connector ops are slow ~58s).
 - Auto-seeds permissions rows on load (`ensurePermissions`).
 
-## 7. Connectors / OAuth (status: Gmail CONNECTED ✅)
+## 7. Connectors / OAuth (status: Gmail CONNECTED ✅ — real send verified 2026-06-27)
 - Gmail connected via **Composio** provider (`lemma connector status` shows gmail CONNECTED).
+  Bound account: `creatineman2727@gmail.com`.
 - Scope granted: `gmail.modify` (broad — Composio's shared Gmail connector). We only call
   GMAIL_SEND_EMAIL. Token held by Composio/Lemma; revocable at myaccount.google.com/permissions.
 - ⚠️ **LEMMA provider gives redirect_uri_mismatch for Google — always use provider COMPOSIO.**
@@ -106,11 +114,32 @@ All linked by Lemma's auto `user_id` (RLS).
 7. ✅ send_email function + Gmail OAuth (Composio) — Gmail CONNECTED, ready to test a real send
 
 ## 10. Next / pending
-- [ ] **Test a real send** end-to-end (recipient = own email) now that Gmail is connected.
+- [x] **Test a real send** end-to-end — ✅ DONE 2026-06-27, email received. Sender Gmail account
+      now `creatineman2727@gmail.com` (account id `019f0931-2f2b-74e6-b087-c9e5a3b320a0`). NOTE:
+      a stale/revoked connected account threw `403 Forbidden` on send + `409 ACCOUNT_ALREADY_
+      CONNECTED` on re-auth — fix is `lemma connector accounts delete <id> -y` then reconnect via
+      the board's Send→needs_auth flow. The `user_email` field on a function-exec record is the
+      Lemma LOGIN, not the Gmail sender (red herring).
+- [ ] **Onboarding "Connections" screen (Option B, deferred):** after login show a one-time screen
+      that requests every surface (Gmail, Calendar) upfront with Connect buttons + live ✓ status;
+      keep lazy ask-on-Send as fallback. Backed by a small `connector_status` server function
+      (`pod.connectors.accounts.list` per surface) so status is accurate after reloads. NOTE:
+      login/signup already handled by Lemma hosted auth (`client.auth.redirectToAuth`) — do NOT
+      build custom auth; this is a connections/onboarding feature, not an auth feature.
 - [ ] **Calendar:** swap calendar auth-config to COMPOSIO, add a function/agent to create events
       for interviews/follow-ups (when calendar_write granted).
 - [ ] **status_transition function** — validate stage moves + auto-set follow_up_date.
-- [ ] **follow_up cron** — daily nudges for applications past follow_up_date.
+- [x] **follow_up cron** — ✅ DONE 2026-06-27. `send_email` now sets `follow_up_date = sent + 5d`
+      (cols `last_followup_at` + BOOLEAN `is_followup_sent` default false added). Function
+      `run_followups` (no LLM) finds apps due/overdue (outreach sent, not terminal,
+      `is_followup_sent`!=true), sets `is_followup_sent=true` after sending, emails ONE digest to
+      `user_profile.email` via Gmail, marks `last_followup_at`. Driven by workflow
+      `follow-up-daily` (MANUAL start, single FUNCTION node) + schedule `follow-up-cron`
+      (TIME cron `0 9 * * *`, active). Board shows a follow-up banner + per-card
+      "Follow up today"/"Overdue" badges (pure client-side from follow_up_date). Verified
+      end-to-end: real reminder sent + same-day dedupe works. (Gotcha: schedules target an
+      agent/workflow, NOT a function — wrap the function in a workflow. SCHEDULED workflow start
+      needs a config; using MANUAL start + the schedule resource for cron instead.)
 - [ ] **Stretch:** inbound email (Gmail surface) → auto-update status; React rewrite of the board
       (decided: AFTER core features); narrow Gmail scope via custom OAuth (optional, low priority).
 - [ ] Clean up any stale/test application rows before the demo; record the demo video (see

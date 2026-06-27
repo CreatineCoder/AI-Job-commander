@@ -65,6 +65,11 @@
       .center button{margin-top:1.2rem;padding:.75rem 1.6rem;font:inherit;font-weight:600;cursor:pointer;border:none;border-radius:999px;background:var(--gold);color:#1c1a17;}
       .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;}
       @keyframes sp{to{transform:rotate(360deg);}}
+      .fubanner{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;padding:.7rem 1rem;border-radius:12px;background:rgba(201,162,39,.13);border:1px solid var(--gold);color:var(--ink);font-size:.92rem;}
+      .fubanner b{font-weight:700;}
+      .fubanner .x{float:none;margin-left:auto;}
+      .tag.today{background:var(--gold);color:#1c1a17;border-color:var(--gold);}
+      .tag.overdue{background:#a23b3b;color:#fff;border-color:#a23b3b;}
     </style>
   </head>
   <body>
@@ -94,7 +99,7 @@
       var ORG_ID="019eff08-dcc4-77e7-b25e-f68201fb0810";
       var GMAIL_AUTH_CONFIG_ID="019f04d3-26fb-742a-9b9c-993a6ae55305";
       var GMAIL_CONNECTED=null;
-      var client, USER=null, ROWS=[];
+      var client, USER=null, ROWS=[], FOLLOWUPS={};
 
       function $(id){return document.getElementById(id);}
       function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -105,6 +110,18 @@
       function applyTheme(t){document.documentElement.setAttribute("data-theme",t);try{localStorage.setItem("lemma-app-theme",t);}catch(e){} var b=$("theme");if(b)b.textContent=t==="dark"?"☀":"☾";}
       function scoreColor(n){n=Number(n)||0;return n>=70?"#5c7a53":n>=45?"#c9a227":"#a23b3b";}
       function asArray(v){if(Array.isArray(v))return v;if(typeof v==="string"){try{var p=JSON.parse(v);return Array.isArray(p)?p:[v];}catch(e){return v?[v]:[];}}return [];}
+      function todayISO(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+      // The followups-table row for an application (or null).
+      function fuRow(r){return FOLLOWUPS[field(r,"id")]||null;}
+      // Follow-up state for a card: "today" | "overdue" | "upcoming" | null. Ignores closed/done.
+      function fuState(r){
+        var f=fuRow(r); if(!f)return null;
+        var fu=field(f,"follow_up_date"); if(!fu)return null;
+        if(field(f,"is_followup_sent")===true)return null;   // user did the follow-up → no alarm
+        var st=field(r,"status"); if(st==="rejected"||st==="withdrawn"||st==="offer")return null;
+        var d=String(fu).slice(0,10), t=todayISO();
+        return d===t?"today":(d<t?"overdue":"upcoming");
+      }
 
       async function boot(){
         applyTheme(theme());
@@ -124,6 +141,12 @@
       async function load(){
         var resp=await client.records.list(TABLE,{limit:200});
         ROWS=listOf(resp);
+        // Load follow-ups (separate table) and index by application_id.
+        FOLLOWUPS={};
+        try{
+          var fr=await client.records.list("followups",{limit:500});
+          listOf(fr).forEach(function(f){var aid=field(f,"application_id"); if(aid)FOLLOWUPS[aid]=f;});
+        }catch(e){}
       }
       // First-time onboarding: seed a permissions row per grant, defaulting to false.
       // Idempotent — only creates keys that don't already exist.
@@ -156,6 +179,19 @@
           stat(total,"applications")+stat(active,"active")+stat(avg,"avg match")+stat(interviews,"interview+")+
           '<button class="addbtn" id="add">+ Add job</button></div>';
 
+        // Follow-up alert banner: how many are due today / overdue.
+        var dueToday=ROWS.filter(function(r){return fuState(r)==="today";});
+        var overdue=ROWS.filter(function(r){return fuState(r)==="overdue";});
+        if(dueToday.length||overdue.length){
+          var parts=[];
+          if(dueToday.length)parts.push('<b>'+dueToday.length+'</b> due today');
+          if(overdue.length)parts.push('<b>'+overdue.length+'</b> overdue');
+          h+='<div class="fubanner">⏰ <span>Follow-ups: '+parts.join(' · ')+'. '+
+             esc((dueToday[0]||overdue[0])&&(field(dueToday[0]||overdue[0],"company")||""))+
+             (dueToday.length+overdue.length>1?' and others':'')+' need a nudge.</span>'+
+             '<button class="x" id="fudismiss" title="Dismiss">×</button></div>';
+        }
+
         h+='<div class="board">';
         STAGES.forEach(function(s){
           var list=byStage[s.k]||[];
@@ -170,16 +206,22 @@
         $("out").onclick=function(){client.auth.signOut().then(function(){location.reload();});};
         $("theme").onclick=function(){applyTheme(theme()==="dark"?"light":"dark");};
         $("add").onclick=addModal;
+        if($("fudismiss"))$("fudismiss").onclick=function(){var b=this.parentNode;if(b)b.style.display="none";};
         document.querySelectorAll("[data-id]").forEach(function(el){el.onclick=function(){detailModal(el.getAttribute("data-id"));};});
       }
       function stat(n,l){return '<div class="stat"><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>';}
       function cardHtml(r){
-        var id=field(r,"id"),sc=field(r,"match_score"),sub=field(r,"sub_status"),na=field(r,"next_action"),fu=field(r,"follow_up_date");
+        var id=field(r,"id"),sc=field(r,"match_score"),sub=field(r,"sub_status"),na=field(r,"next_action");
+        var f=fuRow(r),fu=f&&field(f,"follow_up_date");
         var h='<div class="card" data-id="'+esc(id)+'"><div class="co">'+esc(field(r,"company")||"—")+'</div>'+
           '<div class="ro">'+esc(field(r,"role")||"")+'</div><div class="meta">';
         if(sc!=null&&sc!=="")h+='<span class="score" style="background:'+scoreColor(sc)+'">'+esc(sc)+'</span>';
         if(sub)h+='<span class="tag">'+esc(sub)+'</span>';
-        if(fu)h+='<span class="tag">⏰ '+esc(String(fu).slice(0,10))+'</span>';
+        if(fu){var fs=fuState(r);var cls=fs==="today"?" today":(fs==="overdue"?" overdue":"");
+          var lbl=fs==="today"?"Follow up today":(fs==="overdue"?"Overdue":String(fu).slice(0,10));
+          h+='<span class="tag'+cls+'">⏰ '+esc(lbl)+'</span>';
+          if(field(f,"is_followup_sent")===true)h+='<span class="tag">✓ followed up</span>';
+          else if(field(f,"followup_alarm_sent")===true)h+='<span class="tag">✓ reminded</span>';}
         h+='</div>';
         if(na)h+='<div class="na">'+esc(na)+'</div>';
         h+='</div>';
@@ -200,6 +242,7 @@
         if(topics.length){h+='<label>Prep while you wait</label><div class="chips">'+topics.map(function(s){return '<span class="tag">'+esc(s)+'</span>';}).join("")+'</div>';}
         if(field(r,"next_action")){h+='<label>Next action</label><div class="val">'+esc(field(r,"next_action"))+'</div>';}
         h+=outreachSection(r,id);
+        h+=followupSection(r);
         h+='<div id="impwrap" style="margin-top:1.1rem;border-top:1px dashed var(--line);padding-top:.85rem">'+
           '<label style="margin-top:0">Resume improvements</label>'+
           '<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">'+
@@ -230,6 +273,11 @@
           try{await client.records.delete(TABLE,id);await load();closeModal();render();}
           catch(e){alert("Delete failed: "+(e&&e.message));this.disabled=false;}
         };
+        if($("fudone"))$("fudone").onclick=async function(){
+          var f=fuRow(r); if(!f)return; this.disabled=true;
+          try{await client.records.update("followups",field(f,"id"),{is_followup_sent:true});await load();closeModal();render();}
+          catch(e){alert("Failed: "+(e&&e.message));this.disabled=false;}
+        };
         $("impyes").onclick=function(){$("impbox").style.display="block";$("imprz").focus();};
         $("imprecheck").onclick=async function(){
           var nrz=$("imprz").value.trim(); if(!nrz){$("imprz").focus();return;}
@@ -251,6 +299,20 @@
         wireOutreach(r,id);
       }
 
+      function followupSection(r){
+        var f=fuRow(r); if(!f)return "";
+        var fu=field(f,"follow_up_date");
+        var done=field(f,"is_followup_sent")===true, reminded=field(f,"followup_alarm_sent")===true;
+        var fs=fuState(r);
+        var lbl=done?'✓ Followed up':(fs==="today"?'Due today':(fs==="overdue"?'Overdue':(fu?('Due '+String(fu).slice(0,10)):'—')));
+        var h='<div style="margin-top:1.1rem;border-top:1px dashed var(--line);padding-top:.85rem">'+
+          '<label style="margin-top:0">Follow-up</label>'+
+          '<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">'+
+          '<span style="color:var(--muted);font-size:.86rem">'+esc(lbl)+(reminded&&!done?' · reminder emailed':'')+'</span>';
+        if(!done)h+='<button class="btn" id="fudone">Mark as followed up</button>';
+        h+='</div></div>';
+        return h;
+      }
       function outreachSection(r,id){
         var os=field(r,"outreach_status")||"none";
         var hasDraft=!!field(r,"draft_message");
@@ -320,9 +382,10 @@
           var cemail=(($("cemail")&&$("cemail").value)||field(r,"contact_email")||"").trim();
           var cname=(($("cname")&&$("cname").value)||field(r,"contact_name")||"").trim();
           if(!cemail){ost.innerHTML="Add a recipient (contact email) in the field above, then click Send.";this.disabled=false;return;}
-          // If we haven't confirmed Gmail is connected, open a tab now (in the click
-          // gesture) so we can redirect it to Google's consent without popup-blocking.
-          var authWin=(GMAIL_CONNECTED===true)?null:window.open("about:blank","_blank");
+          // If we haven't confirmed Gmail is connected, open a separate popup WINDOW now (in
+          // the click gesture) so we can redirect it to Google's consent. Using window
+          // features forces a real new window instead of falling back to same-tab navigation.
+          var authWin=(GMAIL_CONNECTED===true)?null:window.open("about:blank","gmailAuth","popup,noopener,width=520,height=640");
           ost.innerHTML='<span class="spin"></span> Saving recipient &amp; sending via Gmail… (can take up to ~60s)';
           try{
             await client.records.update(TABLE,id,{contact_email:cemail,contact_name:cname});
@@ -332,9 +395,14 @@
             else if(out&&out.status==="needs_auth"){
               ost.innerHTML='<span class="spin"></span> Opening Google authorization…';
               var url=await gmailAuthUrl();
-              if(url){ if(authWin){authWin.location=url;} else {window.open(url,"_blank","noopener");} }
-              else if(authWin){authWin.close();}
-              ost.innerHTML='Approve Gmail access in the opened tab, then click <b>Send</b> again.';
+              if(url){
+                // Never navigate the board itself: reuse the pre-opened popup, and if it was
+                // blocked, surface a clickable link the user opens in a new tab manually.
+                if(authWin&&!authWin.closed){ authWin.location=url; }
+                else{ ost.innerHTML='Popup was blocked. <a href="'+esc(url)+'" target="_blank" rel="noopener" class="btn primary">Open Google authorization</a><br>Approve access, then click <b>Send</b> again.'; this.disabled=false; return; }
+              }
+              else{ if(authWin)authWin.close(); ost.innerHTML="Couldn't start Google authorization. Try again."; this.disabled=false; return; }
+              ost.innerHTML='Approve Gmail access in the opened window, then click <b>Send</b> again.';
               this.disabled=false;
             }else{ if(authWin)authWin.close(); ost.innerHTML="Couldn't send: "+esc((out&&out.message)||"unknown error"); this.disabled=false; }
           }catch(e){ if(authWin)authWin.close(); ost.innerHTML="Send failed: "+esc((e&&e.message)||"error"); this.disabled=false; }

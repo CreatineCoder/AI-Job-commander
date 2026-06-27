@@ -1,0 +1,17 @@
+{
+  "name": "run_followups",
+  "description": "Daily job: finds applications whose follow_up_date is due/overdue (outreach sent, not in a terminal stage) and emails the user one digest reminder via Gmail, marking each as reminded.",
+  "type": "API",
+  "visibility": "POD",
+  "code": { "$file": "code.py" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "followups",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "datastore_table", "resource_name": "applications",
+      "permission_ids": ["datastore.table.read", "datastore.record.read"] },
+    { "resource_type": "datastore_table", "resource_name": "user_profile",
+      "permission_ids": ["datastore.table.read", "datastore.record.read"] },
+    { "resource_type": "connector", "resource_name": "gmail",
+      "permission_ids": ["connector.use"] }
+  ] }
+}

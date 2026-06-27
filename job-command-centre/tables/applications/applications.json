@@ -26,7 +26,6 @@
     { "name": "sub_status", "type": "TEXT", "max_length": 60 },
     { "name": "next_action", "type": "TEXT" },
     { "name": "todos", "type": "JSON" },
-    { "name": "follow_up_date", "type": "DATE" },
     { "name": "contact_name", "type": "TEXT", "max_length": 160 },
     { "name": "contact_email", "type": "TEXT", "max_length": 240 },
     { "name": "notes", "type": "TEXT" }

@@ -2,13 +2,17 @@
 #output_type_name: SendEmailResult
 #function_name: send_email
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from lemma_sdk import FunctionContext, Pod
 
 # Org auth-config name for Gmail (Composio-managed OAuth).
 GMAIL_AUTH_CONFIG = "Gmail (Composio)"
 GMAIL_CONNECTOR = "gmail"
+
+# When outreach is sent, schedule a follow-up this many days out.
+# TESTING: 0 = same-day follow-up (due immediately). Set back to 5 for production.
+FOLLOW_UP_DAYS = 0
 
 
 class SendEmailInput(BaseModel):
@@ -69,8 +73,33 @@ async def send_email(ctx: FunctionContext, data: SendEmailInput) -> SendEmailRes
         return SendEmailResult(status="needs_auth", to=to,
                                message="Couldn't send (Gmail may need authorization): " + str(e)[:200])
 
+    now = datetime.now(timezone.utc)
     apps.update(data.application_id, {
         "outreach_status": "sent",
-        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "sent_at": now.isoformat(),
     })
+
+    # Schedule the follow-up in the dedicated followups table (one row per application).
+    # The reminder always goes to the user's profile email — handled by run_followups.
+    follow_up_date = (now + timedelta(days=FOLLOW_UP_DAYS)).date().isoformat()
+    fts = pod.table("followups")
+    try:
+        existing = [f for f in _items(fts.list(limit=500))
+                    if f.get("application_id") == data.application_id]
+    except Exception:
+        existing = []
+    payload = {
+        "application_id": data.application_id,
+        "follow_up_date": follow_up_date,
+    }
+    try:
+        if existing:
+            # Reset an existing follow-up for this application (new outreach → new clock).
+            payload.update({"is_followup_sent": False, "followup_alarm_sent": False})
+            fts.update(existing[0].get("id"), payload)
+        else:
+            fts.create(payload)
+    except Exception:
+        pass
+
     return SendEmailResult(status="sent", to=to, message="Email sent to " + to)

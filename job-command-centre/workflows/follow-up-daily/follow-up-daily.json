@@ -1,0 +1,15 @@
+{
+  "name": "follow-up-daily",
+  "description": "Scheduled daily job that runs run_followups: emails the user a digest of applications whose follow-up is due. No LLM — a single function step.",
+  "start": { "type": "MANUAL" },
+  "nodes": [
+    { "id": "notify", "type": "FUNCTION", "label": "Send due follow-ups",
+      "config": { "function_name": "run_followups",
+        "input_mapping": { "dry_run": { "type": "literal", "value": false } } } },
+    { "id": "end", "type": "END", "label": "Done" }
+  ],
+  "edges": [
+    { "id": "e1", "source": "notify", "target": "end" }
+  ],
+  "visibility": "POD"
+}
