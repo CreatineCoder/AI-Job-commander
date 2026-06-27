@@ -1,7 +1,7 @@
 # Job Command Centre — Build Progress (Session Log)
 
-> Last updated: 2026-06-26. Hackathon: Gappy.AI / Lemma SDK. Builder: Devansh (solo).
-> Deadline: **submit June 30** (~4 days left). Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),
+> Last updated: 2026-06-28. Hackathon: Gappy.AI / Lemma SDK. Builder: Devansh (solo).
+> Deadline: **submit June 30** (~2 days left). Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),
 > [AI_job_architecture.drawio](AI_job_architecture.drawio).
 
 ---
@@ -35,10 +35,20 @@ primitive (datastores, agents, functions, app, connectors).
 - **`followups`** (many) — dedicated follow-up tracking, decoupled from applications. Cols:
   `application_id` (FK→applications.id), `follow_up_date`, `is_followup_sent` (user actually did
   the follow-up → hides board alarm), `followup_alarm_sent` (reminder email dispatched → dedupe),
-  `last_alarm_at`. One row per application, created/reset by `send_email`. (Note: follow_up fields
+  `last_alarm_at`, `stage` (which pipeline stage the follow-up belongs to — added 2026-06-28).
+  **Now MANY rows per application** (one per stage over time, not one) — created/reset by `send_email`
+  on outreach AND by `schedule_followup` on stage change; superseded rows are closed
+  (`is_followup_sent=true`). The board surfaces the single ACTIVE follow-up per app (prefers open,
+  then newest). (Note: follow_up fields
   were REMOVED from `applications` — all follow-up state lives here now.)
   **The reminder/alarm email ALWAYS goes to `user_profile.email`** (it's a notification to the
   user themselves) — `run_followups` resolves that recipient; there is no per-application override.
+  Also holds `followup_subject` + `followup_message` — the recruiter-facing follow-up draft.
+- **Recruiter follow-up flow (added 2026-06-27):** when a follow-up is DUE, the card modal shows
+  "Draft follow-up to recruiter" → agent **`follow-up-agent`** (kimi) drafts a short nudge to the
+  recruiter into the followups row (greets by `contact_name`, or **"Hello team,"** if none) →
+  review → "Send follow-up to recruiter" → function **`send_followup`** sends it to the
+  application's `contact_email` via Gmail and sets `is_followup_sent=true` (clears the alarm).
 - **`permissions`** (many) — grant rows gmail_read/gmail_write/calendar_write (boolean granted),
   auto-seeded false on first board load. (Note: this is an app-level toggle table, separate from
   the real OAuth connector state.)
@@ -62,14 +72,37 @@ All linked by Lemma's auto `user_id` (RLS).
   email_subject/draft_message; checks `pod.connectors.accounts.list(app="gmail")` → if none
   returns {status:"needs_auth"}, else `pod.connectors.execute("Gmail (Composio)",
   "GMAIL_SEND_EMAIL", {recipient_email,subject,body})` (NO account_id) and sets
-  outreach_status=sent. Grant: connector "gmail" `connector.use` + applications r/w.
+  outreach_status=sent. Grant: connector "gmail" `connector.use` + applications r/w. Also stamps
+  the new follow-up row with the application's current `stage`.
+- **`send_followup`** — sends the drafted recruiter follow-up (from a followups row) via Gmail,
+  marks `is_followup_sent=true`. Grant: followups r/w, applications r, connector "gmail".
+- **`run_followups`** — daily digest of due/overdue follow-ups to `user_profile.email` (now shows
+  the `[stage]` in each line). Driven by workflow `follow-up-daily` + schedule `follow-up-cron`.
+- **`schedule_followup`** (added 2026-06-28) — called by the board on a stage change. For active
+  stages (screening/interview/offer) it closes any open follow-ups for that app and creates a fresh
+  one stamped with the new stage + due date (`FOLLOW_UP_DAYS`). Terminal/initial stages skipped.
+  Grant: followups r/w only.
 
-## 6. The board app (apps/board/index.html — no-build single-file HTML)
+## 6. The board app — NOW A MODULAR REACT PROJECT (migrated 2026-06-28)
+- **Source:** `job-command-centre/board-app/` (Vite + React 18 + plain CSS). NOT a pod resource
+  dir, so `lemma pods import` ignores it. **Build:** `npm run build` (in board-app) bundles
+  everything inlined into a single self-contained `apps/board/index.html` via
+  `vite-plugin-singlefile`. The Lemma SDK is still loaded at RUNTIME from the pod host
+  (`/public/sdk/lemma-client.js`, honoring `window.__LEMMA_CONFIG__`) — not bundled.
+- **IMPORTANT:** `apps/board/index.html` is now a BUILD ARTIFACT — edit `board-app/src/`, then
+  rebuild. Deploy is still the separate `lemma app deploy` step (see §8).
+- **Structure:** `lib/` (constants, records.field, helpers, data: load/poll/gmail/delete,
+  lemma SDK loader), `hooks/useTheme`, `components/` (Header, StatBar, FollowupBanner, Board,
+  Column, Card, Modal, AddJobModal, DetailPage + detail/{Outreach,Followup,ResumeImprove}Section).
 - Kanban by status; header stats (total/active/avg match/interview+).
+- **Detail is now a full DASHBOARD PAGE** (not a modal): hash-routed (`#/job/<id>`, browser Back
+  works), hero header + match-score metric, meta chips, two-column grid (main panels + sticky
+  "Manage" sidebar). Add-job remains a modal.
 - **Add job:** resume + JD textareas → calls `parser_scorer` via `client.agents.run`, polls for
   the new row.
-- **Card detail modal:** required skills, gaps, prep topics, next action; editable stage,
-  sub_status, contact_name, contact_email (Save).
+- **Detail page panels:** required skills, gaps, prep topics, next action; editable stage,
+  sub_status, contact_name, contact_email (Save). Changing stage → `schedule_followup`.
+  Delete removes child `followups` rows first (FK), then the application.
 - **Resume-improvement section:** "Have you made the fixes?" → paste updated resume →
   re-runs parser_scorer UPDATE mode → updates gaps + next_action only.
 - **Outreach section:** Generate → review (Approve draft / Edit / Regenerate / Reject) →
@@ -90,8 +123,10 @@ All linked by Lemma's auto `user_id` (RLS).
 - **Always prefix shell with `$env:PYTHONIOENCODING='utf-8'`** and use `--json` for chat —
   the CLI crashes printing emojis/arrows on Windows cp1252. (Also patched select.py termios bug.)
 - **Set default org/pod by UUID, not slug** (slug → "badly formed hexadecimal UUID string").
-- **Deploy pipelines are separate:** `lemma pod import .` for tables/agents/functions;
-  `lemma app deploy devansh-job-command-centre apps/board/index.html --yes` for the board.
+- **Deploy pipelines are separate (3 steps now):** (1) `cd board-app && npm run build` to
+  regenerate `apps/board/index.html`; (2) `lemma pods import .` for tables/agents/functions;
+  (3) `lemma app deploy devansh-job-command-centre ./apps/board/index.html --yes` for the board.
+  Forgetting step 3 = the live board keeps serving old code (this bit us repeatedly).
 - **App slugs are globally unique** (use the namespaced slug).
 - **Function grants for calling a function:** agent needs `function.read` + `function.execute`
   (NOT `function.run`). Connector grant: `connector.use` on resource_name = connector id.
@@ -128,7 +163,16 @@ All linked by Lemma's auto `user_id` (RLS).
       build custom auth; this is a connections/onboarding feature, not an auth feature.
 - [ ] **Calendar:** swap calendar auth-config to COMPOSIO, add a function/agent to create events
       for interviews/follow-ups (when calendar_write granted).
-- [ ] **status_transition function** — validate stage moves + auto-set follow_up_date.
+- [x] **Stage-change follow-ups** — ✅ DONE 2026-06-28. `schedule_followup` function + `stage`
+      column on followups; board calls it on stage change (active stages only). Supersedes the
+      older "status_transition" idea for the follow-up half. (Still open: hard *validation* of
+      stage moves, if wanted.)
+- [x] **React rewrite of the board** — ✅ DONE 2026-06-28. Modular Vite+React project in
+      `board-app/`, builds to single-file `apps/board/index.html`. Detail view is now a dashboard
+      page. Also fixed 3 bugs found during migration: (1) Gmail auth popup orphaned an `about:blank`
+      window (caused by `noopener` making `window.open` return null); (2) Delete blocked by the
+      followups FK (now deletes children first); (3) outreach/follow-up "30–60s" spinner never
+      cleared on success (success paths now reset status/busy).
 - [x] **follow_up cron** — ✅ DONE 2026-06-27. `send_email` now sets `follow_up_date = sent + 5d`
       (cols `last_followup_at` + BOOLEAN `is_followup_sent` default false added). Function
       `run_followups` (no LLM) finds apps due/overdue (outreach sent, not terminal,
@@ -140,10 +184,20 @@ All linked by Lemma's auto `user_id` (RLS).
       end-to-end: real reminder sent + same-day dedupe works. (Gotcha: schedules target an
       agent/workflow, NOT a function — wrap the function in a workflow. SCHEDULED workflow start
       needs a config; using MANUAL start + the schedule resource for cron instead.)
-- [ ] **Stretch:** inbound email (Gmail surface) → auto-update status; React rewrite of the board
-      (decided: AFTER core features); narrow Gmail scope via custom OAuth (optional, low priority).
+- [ ] **Stretch:** inbound email (Gmail surface) → auto-update status; narrow Gmail scope via
+      custom OAuth (optional, low priority).
 - [ ] Clean up any stale/test application rows before the demo; record the demo video (see
       ARCHITECTURE.md §13 demo script).
+
+### Immediate to-do (deploy + housekeeping — as of 2026-06-28)
+- [ ] **DEPLOY — nothing above is live yet.** Backend then board:
+      `lemma pods import .` (creates `schedule_followup`, updates `followups`), then
+      `lemma app deploy devansh-job-command-centre ./apps/board/index.html --yes`. Hard-refresh.
+- [ ] **Bump `FOLLOW_UP_DAYS` 0 → 5** in BOTH `functions/send_email/code.py` and
+      `functions/schedule_followup/code.py` (currently 0 for testing = due immediately).
+- [ ] **Commit everything** — the React project, fixes, and feature are all uncommitted.
+- [ ] Delete stray `job-command-centre/package-lock.json` (leftover from a failed npm install;
+      the real lockfile is in `board-app/`).
 
 ## 11. Judging reminders
 35% problem clarity · 25% product judgment · 25% execution (working core loop) · 15% SDK use.

@@ -124,10 +124,12 @@ async def run_followups(ctx: FunctionContext, data: RunFollowupsInput) -> RunFol
         overdue = " (OVERDUE)" if fu and fu < today else ""
         who = (app.get("contact_name") or app.get("contact_email") or "the recruiter")
         na = (app.get("next_action") or "Send a follow-up note.")
+        stage = (f.get("stage") or app.get("status") or "").strip()
+        stage_tag = " [{s}]".format(s=stage) if stage else ""
         lines.append(
-            "- {company} - {role}{od}\n    Follow up with {who}. Next: {na}".format(
+            "- {company} - {role}{stage}{od}\n    Follow up with {who}. Next: {na}".format(
                 company=app.get("company") or "?", role=app.get("role") or "?",
-                od=overdue, who=str(who).strip(), na=str(na).strip(),
+                stage=stage_tag, od=overdue, who=str(who).strip(), na=str(na).strip(),
             )
         )
     subject = "Job follow-ups due today ({n})".format(n=len(due))

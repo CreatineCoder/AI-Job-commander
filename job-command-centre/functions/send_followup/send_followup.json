@@ -1,0 +1,15 @@
+{
+  "name": "send_followup",
+  "description": "Sends the drafted recruiter follow-up (from a followups row) to the application's contact_email via Gmail, then marks the follow-up done (is_followup_sent=true) to clear the board alarm.",
+  "type": "API",
+  "visibility": "POD",
+  "code": { "$file": "code.py" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "followups",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "datastore_table", "resource_name": "applications",
+      "permission_ids": ["datastore.table.read", "datastore.record.read"] },
+    { "resource_type": "connector", "resource_name": "gmail",
+      "permission_ids": ["connector.use"] }
+  ] }
+}

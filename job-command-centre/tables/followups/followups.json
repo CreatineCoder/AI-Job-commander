@@ -6,10 +6,13 @@
   "columns": [
     { "name": "application_id", "type": "UUID", "required": true,
       "foreign_key": { "references": "applications.id" } },
+    { "name": "stage", "type": "TEXT", "max_length": 40 },
     { "name": "follow_up_date", "type": "DATE" },
     { "name": "is_followup_sent", "type": "BOOLEAN", "default": false },
     { "name": "followup_alarm_sent", "type": "BOOLEAN", "default": false },
     { "name": "last_alarm_at", "type": "DATETIME" },
+    { "name": "followup_subject", "type": "TEXT", "max_length": 240 },
+    { "name": "followup_message", "type": "TEXT" },
     { "name": "notes", "type": "TEXT" }
   ],
   "config": {}

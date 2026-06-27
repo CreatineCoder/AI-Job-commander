@@ -1,0 +1,11 @@
+{
+  "name": "schedule_followup",
+  "description": "Called when an application's stage changes. For active stages (screening/interview/offer) it closes any open follow-ups for that application and creates a fresh follow-up stamped with the new stage and a due date. Terminal/initial stages are skipped.",
+  "type": "API",
+  "visibility": "POD",
+  "code": { "$file": "code.py" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "followups",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] }
+  ] }
+}

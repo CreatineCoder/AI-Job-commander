@@ -90,6 +90,7 @@ async def send_email(ctx: FunctionContext, data: SendEmailInput) -> SendEmailRes
         existing = []
     payload = {
         "application_id": data.application_id,
+        "stage": (rec.get("status") or "applied"),
         "follow_up_date": follow_up_date,
     }
     try:
