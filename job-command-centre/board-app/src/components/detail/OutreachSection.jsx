@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { useApp } from "../../AppContext.jsx";
 import { field } from "../../lib/helpers.js";
 import { OUTREACH, TABLE } from "../../lib/constants.js";
-import { pollChange, gmailAuthUrl } from "../../lib/data.js";
+import { pollChange, gmailAuthUrl, getResume, getProfile } from "../../lib/data.js";
+import { agentContextBlock } from "../../lib/prompt.js";
 
 // Outreach workflow: generate → review/approve → send a tailored recruiter email.
 export default function OutreachSection({ r, id, getContact }) {
@@ -23,10 +24,21 @@ export default function OutreachSection({ r, id, getContact }) {
     setBusy(true);
     setText("Drafting email & cover letter… (~30–60s)", true);
     const oldDraft = String(field(r, "draft_message") || "");
+    // Fetch the resume + profile up front and embed them, so the agent makes NO
+    // read calls — it only does a single update (cuts ~3 LLM round-trips).
+    const [resume, profile] = await Promise.all([
+      getResume(client, field(r, "resume_id")),
+      getProfile(client),
+    ]);
     const msg =
-      "Draft outreach for application record id: " +
+      "Draft outreach for application id: " +
       id +
-      ". Read that application, its linked resume_data (by resume_id), and user_profile. Write email_subject, draft_message (the recruiter email) and cover_letter, and set outreach_status to 'drafted'. Update ONLY that applications row by id; do not change status or create new rows.";
+      ". ALL context you need is provided below — do NOT read any tables. Write email_subject, " +
+      "draft_message (the recruiter email) and cover_letter, set outreach_status to 'drafted', and " +
+      "persist them with a SINGLE update to the applications row id=" +
+      id +
+      " (do not change status, resume_id, or create new rows).\n\n" +
+      agentContextBlock(r, resume, profile);
     try {
       await client.agents.run(OUTREACH, msg);
       const ok = await pollChange(client, id, "draft_message", oldDraft, 90000);

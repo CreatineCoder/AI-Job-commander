@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { useApp } from "../../AppContext.jsx";
 import { field, fuRow, fuState } from "../../lib/helpers.js";
 import { TABLE } from "../../lib/constants.js";
-import { pollFollowup, gmailAuthUrl } from "../../lib/data.js";
+import { pollFollowup, gmailAuthUrl, getResume, getProfile } from "../../lib/data.js";
+import { agentContextBlock } from "../../lib/prompt.js";
 
 // Follow-up panel: shown only when a followups row exists for this application.
 // Lets the user mark done, draft/edit/regenerate, and send the follow-up via Gmail.
@@ -49,18 +50,45 @@ export default function FollowupSection({ r, id, getContact }) {
     setBusy(false);
   }
 
+  // Re-open a completed follow-up so the user can send ANOTHER one (fresh clock,
+  // blank draft). Keeps the option available even after they've already followed up.
+  async function followAgain() {
+    setBusy(true);
+    try {
+      await client.records.update("followups", fid, {
+        is_followup_sent: false,
+        followup_alarm_sent: false,
+        followup_message: "",
+        followup_subject: "",
+      });
+      await reload();
+      setStatus(null);
+    } catch (e) {
+      alert("Failed: " + (e && e.message));
+    }
+    setBusy(false);
+  }
+
   async function draftFn() {
     setBusy(true);
     setText("Drafting a follow-up to the recruiter… (~30–60s)", true);
     const old = String(field(f, "followup_message") || "");
+    // Embed resume + profile up front so the agent makes NO read calls — one write only.
+    const [resume, profile] = await Promise.all([
+      getResume(client, field(r, "resume_id")),
+      getProfile(client),
+    ]);
+    const stage = String(field(f, "stage") || field(r, "status") || "applied");
     const msg =
-      "Draft a follow-up email to the recruiter for application record id: " +
-      id +
-      ". The followups record id is " +
+      "Draft a follow-up email to the recruiter. ALL context you need is provided below — do NOT " +
+      "read any tables. Update ONLY the followups row id=" +
       fid +
-      ". Read that application, its linked resume_data (by resume_id) " +
-      "and user_profile, then update ONLY that followups row by id with followup_subject and " +
-      "followup_message. If the application has no contact_name, greet with 'Hello team,'. Never send.";
+      " with followup_subject and followup_message, using a SINGLE update. If there is no " +
+      "contact_name, greet with 'Hello team,'. Never send.\n\n" +
+      "=== FOLLOW-UP STAGE ===\nstage: " +
+      stage +
+      "\nWrite the follow-up appropriately for THIS stage (see your stage playbook).\n\n" +
+      agentContextBlock(r, resume, profile);
     try {
       await client.agents.run("follow-up-agent", msg);
       const ok = await pollFollowup(client, field(r, "id"), old, 90000);
@@ -179,7 +207,7 @@ export default function FollowupSection({ r, id, getContact }) {
           </button>
         )}
       </div>
-      {due && !done && (
+      {!done ? (
         <>
           {draft ? (
             <>
@@ -214,7 +242,9 @@ export default function FollowupSection({ r, id, getContact }) {
           ) : (
             <>
               <div style={{ marginTop: "0.6rem", color: "var(--muted)", fontSize: "0.86rem" }}>
-                No reply yet? Draft a follow-up to the recruiter.
+                {due
+                  ? "No reply yet? Draft a follow-up to the recruiter."
+                  : "Want to reach out again? Draft a follow-up to the recruiter."}
               </div>
               <div className="row2">
                 <button className="btn primary" onClick={draftFn} disabled={busy}>
@@ -224,6 +254,18 @@ export default function FollowupSection({ r, id, getContact }) {
             </>
           )}
         </>
+      ) : (
+        // Already followed up — but always let the user send another one.
+        <div style={{ marginTop: "0.6rem" }}>
+          <div style={{ color: "var(--muted)", fontSize: "0.86rem", marginBottom: "0.4rem" }}>
+            Need to nudge them again?
+          </div>
+          <div className="row2">
+            <button className="btn" onClick={followAgain} disabled={busy}>
+              Follow up again
+            </button>
+          </div>
+        </div>
       )}
       <div style={{ marginTop: "0.6rem", color: "var(--muted)", fontSize: "0.82rem" }}>
         {status?.edit ? (

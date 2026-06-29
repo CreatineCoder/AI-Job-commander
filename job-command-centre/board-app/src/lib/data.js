@@ -60,26 +60,31 @@ export async function ensurePermissions(client) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Callers await the agent run (which already blocks until the agent finishes)
+// before polling, so the DB write is usually already done — check IMMEDIATELY,
+// then poll on a tight interval. The old "sleep 4s first" added guaranteed dead time.
+const POLL_MS = 1500;
+
 // Poll until a brand-new application row appears (count grows past `before`).
 export async function pollNew(client, before, timeoutMs) {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await sleep(4000);
+  do {
     try {
       const { rows } = await loadData(client);
       if (rows.length > before) return true;
     } catch (e) {
       /* retry */
     }
-  }
+    if (Date.now() - start >= timeoutMs) break;
+    await sleep(POLL_MS);
+  } while (Date.now() - start < timeoutMs);
   return false;
 }
 
 // Poll an applications row until `fieldName` changes from `oldVal`.
 export async function pollChange(client, id, fieldName, oldVal, timeoutMs) {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await sleep(4000);
+  do {
     let rows = [];
     try {
       ({ rows } = await loadData(client));
@@ -88,15 +93,16 @@ export async function pollChange(client, id, fieldName, oldVal, timeoutMs) {
     }
     const r = rows.filter((x) => String(field(x, "id")) === String(id))[0];
     if (r && String(field(r, fieldName) || "") !== String(oldVal)) return true;
-  }
+    if (Date.now() - start >= timeoutMs) break;
+    await sleep(POLL_MS);
+  } while (Date.now() - start < timeoutMs);
   return false;
 }
 
 // Poll the followups row (by application id) until its followup_message changes.
 export async function pollFollowup(client, appId, oldVal, timeoutMs) {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await sleep(4000);
+  do {
     let followups = {};
     try {
       ({ followups } = await loadData(client));
@@ -105,8 +111,31 @@ export async function pollFollowup(client, appId, oldVal, timeoutMs) {
     }
     const f = followups[appId];
     if (f && String(field(f, "followup_message") || "") !== String(oldVal)) return true;
-  }
+    if (Date.now() - start >= timeoutMs) break;
+    await sleep(POLL_MS);
+  } while (Date.now() - start < timeoutMs);
   return false;
+}
+
+// Fetch the resume_data row used by an application (by resume_id), or null.
+export async function getResume(client, resumeId) {
+  if (!resumeId) return null;
+  try {
+    const resp = await client.records.list("resume_data", { limit: 200 });
+    return listOf(resp).filter((x) => String(field(x, "id")) === String(resumeId))[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Fetch the single user_profile row, or null.
+export async function getProfile(client) {
+  try {
+    const resp = await client.records.list("user_profile", { limit: 1 });
+    return listOf(resp)[0] || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // Delete an application and any follow-up rows that reference it. The followups

@@ -76,6 +76,59 @@ def _as_date(v):
             return None
 
 
+def _esc(s):
+    return (str(s or "")
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _digest_html(rows, n, today_iso):
+    """rows: list of dicts {company, role, stage, overdue, who, na}."""
+    cards = []
+    for r in rows:
+        badges = ""
+        if r["stage"]:
+            badges += ('<span style="display:inline-block;background:#eef2ff;color:#4f46e5;'
+                       'font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;'
+                       'margin-left:8px;">' + _esc(r["stage"]) + "</span>")
+        if r["overdue"]:
+            badges += ('<span style="display:inline-block;background:#fee2e2;color:#dc2626;'
+                       'font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;'
+                       'margin-left:8px;">OVERDUE</span>')
+        cards.append(
+            '<tr><td style="padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;'
+            'background:#f8fafc;">'
+            '<div style="font-weight:700;color:#0f172a;font-size:15px;">'
+            + _esc(r["company"]) + ' &middot; ' + _esc(r["role"]) + badges + "</div>"
+            '<div style="color:#475569;font-size:13px;margin-top:6px;">Follow up with <b>'
+            + _esc(r["who"]) + "</b></div>"
+            '<div style="color:#64748b;font-size:13px;margin-top:2px;">Next: '
+            + _esc(r["na"]) + "</div>"
+            "</td></tr><tr><td style=\"height:10px;\"></td></tr>"
+        )
+    app_url = "https://devansh-job-command-centre.apps.lemma.work"
+    return (
+        '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">'
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" '
+        'style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;'
+        'overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.08);">'
+        '<tr><td style="height:4px;background:linear-gradient(90deg,#4f46e5,#06b6d4);"></td></tr>'
+        '<tr><td style="padding:30px 34px;font-family:-apple-system,BlinkMacSystemFont,'
+        "'Segoe UI',Roboto,Helvetica,Arial,sans-serif;\">"
+        '<div style="font-size:18px;font-weight:800;color:#0f172a;">'
+        + str(n) + ' follow-up' + ('s' if n != 1 else '') + ' due</div>'
+        '<div style="color:#64748b;font-size:13px;margin:4px 0 20px;">as of '
+        + _esc(today_iso) + "</div>"
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        + "".join(cards) + "</table>"
+        '<a href="' + app_url + '" style="display:inline-block;margin-top:14px;'
+        'background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;'
+        'font-weight:600;padding:11px 22px;border-radius:10px;">Open Command Centre</a>'
+        "</td></tr></table></td></tr></table></body></html>"
+    )
+
+
 async def run_followups(ctx: FunctionContext, data: RunFollowupsInput) -> RunFollowupsResult:
     pod = Pod.from_env()
     fts = pod.table("followups")
@@ -118,31 +171,24 @@ async def run_followups(ctx: FunctionContext, data: RunFollowupsInput) -> RunFol
                                   message="Dry run — would notify " + to)
 
     # One digest to the profile email covering every due follow-up.
-    lines = []
+    rows = []
     for f, app in due:
         fu = _as_date(f.get("follow_up_date"))
-        overdue = " (OVERDUE)" if fu and fu < today else ""
-        who = (app.get("contact_name") or app.get("contact_email") or "the recruiter")
-        na = (app.get("next_action") or "Send a follow-up note.")
-        stage = (f.get("stage") or app.get("status") or "").strip()
-        stage_tag = " [{s}]".format(s=stage) if stage else ""
-        lines.append(
-            "- {company} - {role}{stage}{od}\n    Follow up with {who}. Next: {na}".format(
-                company=app.get("company") or "?", role=app.get("role") or "?",
-                stage=stage_tag, od=overdue, who=str(who).strip(), na=str(na).strip(),
-            )
-        )
+        rows.append({
+            "company": app.get("company") or "?",
+            "role": app.get("role") or "?",
+            "stage": (f.get("stage") or app.get("status") or "").strip(),
+            "overdue": bool(fu and fu < today),
+            "who": str(app.get("contact_name") or app.get("contact_email") or "the recruiter").strip(),
+            "na": str(app.get("next_action") or "Send a follow-up note.").strip(),
+        })
     subject = "Job follow-ups due today ({n})".format(n=len(due))
-    body = (
-        "You have {n} job application follow-up(s) due as of {d}:\n\n".format(n=len(due), d=today.isoformat())
-        + "\n".join(lines)
-        + "\n\nOpen your Command Centre to act on these."
-    )
+    html_body = _digest_html(rows, len(due), today.isoformat())
 
     try:
         resp = pod.connectors.execute(
             GMAIL_AUTH_CONFIG, "GMAIL_SEND_EMAIL",
-            {"recipient_email": to, "subject": subject, "body": body},
+            {"recipient_email": to, "subject": subject, "body": html_body, "is_html": True},
         )
     except Exception as e:
         return RunFollowupsResult(ok=False, due=len(due), notified=False, to=to,

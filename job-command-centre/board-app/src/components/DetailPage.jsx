@@ -176,9 +176,12 @@ export default function DetailPage({ id, onBack }) {
               </div>
             )}
 
-            <div className="panel">
-              <OutreachSection r={r} id={id} getContact={getContact} />
-            </div>
+            {/* Outreach only makes sense before the pipeline moves on — gate to 'applied'. */}
+            {(field(r, "status") || "applied") === "applied" && (
+              <div className="panel">
+                <OutreachSection r={r} id={id} getContact={getContact} />
+              </div>
+            )}
 
             {f && (
               <div className="panel">

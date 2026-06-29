@@ -41,6 +41,70 @@ def _to_dict(x):
     return x if isinstance(x, dict) else {}
 
 
+def _esc(s):
+    return (str(s or "")
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _body_html(text):
+    blocks = [b for b in str(text or "").replace("\r\n", "\n").split("\n\n") if b.strip()]
+    return "".join(
+        '<p style="margin:0 0 16px;">' + _esc(b.strip()).replace("\n", "<br>") + "</p>"
+        for b in blocks
+    )
+
+
+def _signature(profile):
+    if not profile:
+        return ""
+    name = _esc(profile.get("full_name"))
+    headline = _esc(profile.get("headline"))
+    email = _esc(profile.get("email"))
+    links_raw = profile.get("links")
+    links = []
+    if isinstance(links_raw, (list, tuple)):
+        links = [str(x) for x in links_raw if x]
+    elif links_raw:
+        links = [s.strip() for s in str(links_raw).replace(",", " ").split() if s.strip()]
+    parts = []
+    if name:
+        parts.append('<div style="font-weight:700;color:#0f172a;font-size:15px;">' + name + "</div>")
+    if headline:
+        parts.append('<div style="color:#64748b;font-size:13px;margin-top:2px;">' + headline + "</div>")
+    contact = []
+    if email:
+        contact.append('<a href="mailto:' + email + '" style="color:#4f46e5;text-decoration:none;">' + email + "</a>")
+    for lk in links:
+        href = lk if lk.startswith("http") else "https://" + lk
+        label = lk.replace("https://", "").replace("http://", "").rstrip("/")
+        contact.append('<a href="' + _esc(href) + '" style="color:#4f46e5;text-decoration:none;">' + _esc(label) + "</a>")
+    if contact:
+        parts.append('<div style="color:#64748b;font-size:13px;margin-top:6px;">'
+                     + ' &nbsp;·&nbsp; '.join(contact) + "</div>")
+    if not parts:
+        return ""
+    return ('<div style="margin-top:28px;padding-top:18px;border-top:1px solid #e2e8f0;">'
+            + "".join(parts) + "</div>")
+
+
+def _html_email(body_text, profile):
+    return (
+        '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f1f5f9;padding:24px 0;"><tr><td align="center">'
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" '
+        'style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;'
+        'overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.08);">'
+        '<tr><td style="height:4px;background:linear-gradient(90deg,#4f46e5,#06b6d4);"></td></tr>'
+        '<tr><td style="padding:32px 36px;font-family:-apple-system,BlinkMacSystemFont,'
+        "'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;font-size:15px;"
+        'line-height:1.65;">'
+        + _body_html(body_text)
+        + _signature(profile)
+        + "</td></tr></table></td></tr></table></body></html>"
+    )
+
+
 def _send_ok(resp):
     d = _to_dict(resp)
     if "successful" in d and d.get("successful") is False:
@@ -84,9 +148,15 @@ async def send_followup(ctx: FunctionContext, data: SendFollowupInput) -> SendFo
                                   message="Gmail is not connected. Authorize Gmail to send this follow-up.")
 
     try:
+        profile = (_items(pod.table("user_profile").list(limit=1)) or [None])[0]
+    except Exception:
+        profile = None
+    html_body = _html_email(body, profile)
+
+    try:
         resp = pod.connectors.execute(
             GMAIL_AUTH_CONFIG, "GMAIL_SEND_EMAIL",
-            {"recipient_email": to, "subject": subject, "body": body},
+            {"recipient_email": to, "subject": subject, "body": html_body, "is_html": True},
         )
     except Exception as e:
         return SendFollowupResult(status="needs_auth", to=to,

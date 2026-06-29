@@ -1,6 +1,6 @@
 # Job Command Centre — Build Progress (Session Log)
 
-> Last updated: 2026-06-28. Hackathon: Gappy.AI / Lemma SDK. Builder: Devansh (solo).
+> Last updated: 2026-06-29. Hackathon: Gappy.AI / Lemma SDK. Builder: Devansh (solo).
 > Deadline: **submit June 30** (~2 days left). Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),
 > [AI_job_architecture.drawio](AI_job_architecture.drawio).
 
@@ -184,6 +184,56 @@ All linked by Lemma's auto `user_id` (RLS).
       end-to-end: real reminder sent + same-day dedupe works. (Gotcha: schedules target an
       agent/workflow, NOT a function — wrap the function in a workflow. SCHEDULED workflow start
       needs a config; using MANUAL start + the schedule resource for cron instead.)
+- [x] **Branded HTML emails** — ✅ DONE 2026-06-29. All three Gmail sends now go out as styled
+      HTML (`is_html: True`) instead of plain text: branded card shell (accent gradient bar, rounded
+      container) + a signature card pulled from `user_profile` (name/headline/email/links).
+      - `send_email` + `send_followup`: each has self-contained `_html_email`/`_body_html`/
+        `_signature` helpers; they wrap the user-reviewed plain-text `draft_message`/`followup_message`
+        (kept as source of truth) into HTML at send time. The board still shows/edits plain text.
+      - `run_followups`: digest is now a card-per-follow-up layout (`_digest_html`) with stage +
+        OVERDUE badges and an "Open Command Centre" button.
+      - ✅ **VERIFIED 2026-06-29:** Composio `GMAIL_SEND_EMAIL` honors `is_html` — real send
+        arrived with the branded card + signature. (Gotcha: `lemma pods import .` MUST be run from
+        inside `job-command-centre/`; running it from the repo root says "Nothing to import" and
+        silently deploys nothing.)
+- [x] **Cover letter as PDF attachment** — ✅ DONE 2026-06-29 (verify on deploy). `send_email`
+      now attaches the application's `cover_letter` as a generated PDF. Pure-Python zero-dependency
+      PDF writer (`_make_cover_letter_pdf`: built-in Helvetica/Helvetica-Bold, auto-wrap +
+      pagination, A4) — no runtime libs needed. Header block = applicant name + role — company,
+      then the letter body. Smart punctuation normalized to Latin-1 (`—`→`-`, curly quotes, `…`).
+      Attached via Composio `GMAIL_SEND_EMAIL` `attachment` = {name, mimetype, content(base64)}.
+      **Best-effort/non-fatal:** any PDF/attachment failure is swallowed so the email still sends.
+      Validated locally with pypdf (parses, text extracts, pagination OK).
+      - ⚠️ **VERIFY ON DEPLOY:** confirm Composio honors the `attachment` param shape (name/
+        mimetype/base64 `content`). If the recruiter gets the email but NO PDF, the attachment dict
+        format is wrong — adjust the payload, the send itself won't break.
+      - 🐛 **FIXED 2026-06-29:** the `{name,mimetype,content}` attachment shape made Composio's
+        `execute()` THROW, which the old `except` mislabeled `needs_auth` → board tried to re-auth an
+        already-connected Gmail → "Couldn't start Google authorization." `send_email` now retries the
+        send WITHOUT the attachment if the first try fails, so a bad attachment shape degrades to a
+        plain (no-PDF) send instead of blocking outreach. Still need the correct Composio attachment
+        format for the PDF to actually arrive (inspect the function-exec record's error to learn it).
+- [x] **Outreach templates + gated to 'applied'** — ✅ DONE 2026-06-29. (1) `outreach_writer`
+      instruction rewritten around two real persona templates (early-career + experienced):
+      full cover-letter-form email with subject `<Role> Application: <Name>`, structured body
+      (open → why-them → evidence/bullets → close), and a name/email/phone sign-off block. Email
+      now references the attached cover letter (NOT a CV — only the PDF is attached). Added `phone`
+      to the agent profile context (`prompt.js`). (2) Board now only renders the Outreach panel when
+      `status === 'applied'` (DetailPage.jsx) — generating outreach in later stages makes no sense.
+      Requires FULL deploy (board rebuilt + agent re-import).
+- [x] **Stage-aware follow-up messages** — ✅ DONE 2026-06-29. The recruiter follow-up draft now
+      adapts to the follow-up's `stage`. Board ([FollowupSection.jsx]) passes a `=== FOLLOW-UP STAGE
+      ===` block (from the followups row's `stage`, fallback app `status`) into the agent message.
+      `follow-up-agent` instruction gained a **Stage playbook**: applied→gentle no-reply nudge,
+      screening→post-call thanks + next-step ask, interview→post-interview thank-you + timeline,
+      offer→gracious offer follow-up; each with its own subject line. Guardrail added: never
+      fabricate interviews/conversations not in context. Requires FULL deploy (board + agent import).
+- [x] **Follow-up option always available** — ✅ DONE 2026-06-29. Previously the draft/send UI was
+      gated on `due && !done`, so after marking done (or when not yet due) the option vanished. Now
+      ([FollowupSection.jsx]): the draft/send block shows whenever the follow-up is NOT done (not
+      just when due — proactive follow-ups allowed); and once done, a "Follow up again" button
+      reopens the row (`is_followup_sent`/`followup_alarm_sent`→false, clears the draft) so the user
+      can send another. Board-only change (rebuild + `lemma app deploy`).
 - [ ] **Stretch:** inbound email (Gmail surface) → auto-update status; narrow Gmail scope via
       custom OAuth (optional, low priority).
 - [ ] Clean up any stale/test application rows before the demo; record the demo video (see
