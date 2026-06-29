@@ -6,6 +6,8 @@ import { deleteApplication } from "../lib/data.js";
 import OutreachSection from "./detail/OutreachSection.jsx";
 import FollowupSection from "./detail/FollowupSection.jsx";
 import ResumeImproveSection from "./detail/ResumeImproveSection.jsx";
+import TodoSection from "./detail/TodoSection.jsx";
+import InterviewPrepSection from "./detail/InterviewPrepSection.jsx";
 
 export default function DetailPage({ id, onBack }) {
   const { client, rows, followups, reload } = useApp();
@@ -173,6 +175,17 @@ export default function DetailPage({ id, onBack }) {
                     <div className="val">{field(r, "next_action")}</div>
                   </>
                 )}
+              </div>
+            )}
+
+            <div className="panel">
+              <TodoSection r={r} id={id} />
+            </div>
+
+            {/* Interview prep is relevant once you're in/through the pipeline. */}
+            {["screening", "interview", "offer"].includes(field(r, "status") || "") && (
+              <div className="panel">
+                <InterviewPrepSection r={r} id={id} />
               </div>
             )}
 

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useApp } from "../../AppContext.jsx";
 import { field, fuRow, fuState } from "../../lib/helpers.js";
 import { TABLE } from "../../lib/constants.js";
-import { pollFollowup, gmailAuthUrl, getResume, getProfile } from "../../lib/data.js";
+import { pollFollowup, pollFollowupField, gmailAuthUrl, getResume, getProfile } from "../../lib/data.js";
 import { agentContextBlock } from "../../lib/prompt.js";
 
 // Follow-up panel: shown only when a followups row exists for this application.
@@ -12,6 +12,8 @@ export default function FollowupSection({ r, id, getContact }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // {spin,text} | {html} | {edit:true}
   const editRef = useRef(null);
+  const noteRef = useRef(null);
+  const dateRef = useRef(null);
 
   const f = fuRow(followups, r);
   if (!f) return null;
@@ -100,6 +102,70 @@ export default function FollowupSection({ r, id, getContact }) {
       }
     } catch (e) {
       setText("Failed: " + ((e && e.message) || "error"));
+    }
+    setBusy(false);
+  }
+
+  // Save the manually-picked date + the context note. If a note is present, the
+  // followup_scheduler agent reads it and, when it finds a date in there, OVERRIDES the
+  // saved date with it (and shows it in the calendar). Any date change re-arms the alarm.
+  async function saveSchedule() {
+    setBusy(true);
+    const manualDate = dateRef.current ? dateRef.current.value : "";
+    const note = noteRef.current ? noteRef.current.value : "";
+    const curDate = String(fu || "").slice(0, 10);
+    try {
+      // 1) Persist the note + the manual date (baseline the agent can keep or override).
+      const base = { notes: note };
+      if (manualDate && manualDate !== curDate) {
+        base.follow_up_date = manualDate;
+        base.date_reason = "Set manually.";
+        base.followup_alarm_sent = false;
+      }
+      await client.records.update("followups", fid, base);
+
+      // 2) If there's context, let the scheduler derive a date from it (may override).
+      if (note.trim()) {
+        setText("Reading your context to set the follow-up date… (~15–30s)", true);
+        const today = new Date().toISOString().slice(0, 10);
+        const stage = String(field(f, "stage") || field(r, "status") || "applied");
+        const jd = String(field(r, "jd_text") || "").slice(0, 1200);
+        const seedDate = base.follow_up_date || curDate;
+        const before = seedDate; // poll for any change away from this
+        const msg =
+          "Pick the follow-up date for followups id=" +
+          fid +
+          ". ALL context is below — do NOT read any tables. Update ONLY this followups row with " +
+          "follow_up_date (YYYY-MM-DD) and date_reason, using a SINGLE update.\n\n" +
+          "=== TODAY ===\n" + today +
+          "\n\n=== STAGE ===\n" + stage +
+          "\n\n=== CONTEXT NOTE ===\n" + (note || "(none)") +
+          "\n\n=== CURRENT FOLLOW-UP DATE ===\n" + (seedDate || "(none)") +
+          "\n\n" + (jd ? "=== JOB DESCRIPTION ===\n" + jd + "\n" : "");
+        try {
+          await client.agents.run("followup_scheduler", msg);
+          // The agent may keep the same date (no date in context) — wait briefly either way.
+          await pollFollowupField(client, field(r, "id"), "date_reason", String(field(f, "date_reason") || ""), 60000);
+          try {
+            await client.records.update("followups", fid, { followup_alarm_sent: false });
+          } catch (e) {
+            /* ignore */
+          }
+        } catch (e) {
+          /* fall through to reload with whatever we have */
+        }
+      }
+
+      const fresh = await reload();
+      setStatus(null);
+      const nf = fresh && fresh.followups && fresh.followups[field(r, "id")];
+      const nd = nf ? String(field(nf, "follow_up_date") || "").slice(0, 10) : manualDate;
+      window.alert(
+        nd ? "Saved. You'll be reminded to follow up on " + nd + "." : "Context note saved."
+      );
+    } catch (e) {
+      setStatus(null);
+      alert("Save failed: " + (e && e.message));
     }
     setBusy(false);
   }
@@ -207,6 +273,47 @@ export default function FollowupSection({ r, id, getContact }) {
           </button>
         )}
       </div>
+
+      {!done && (
+        <div style={{ marginTop: "0.7rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <span
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.8rem",
+                textTransform: "none",
+                letterSpacing: "normal",
+              }}
+            >
+              Follow up on
+            </span>
+            <input
+              type="date"
+              ref={dateRef}
+              key={String(fu)}
+              defaultValue={String(fu || "").slice(0, 10)}
+              disabled={busy}
+            />
+          </div>
+          {field(f, "date_reason") && (
+            <div style={{ color: "var(--muted)", fontSize: "0.78rem", marginTop: "0.3rem" }}>
+              {field(f, "date_reason")}
+            </div>
+          )}
+          <textarea
+            ref={noteRef}
+            defaultValue={String(field(f, "notes") || "")}
+            placeholder="Paste any recruiter reply or note here (e.g. 'they said they'll decide by July 10'). On Save, if it mentions a date, that date overrides the calendar above."
+            style={{ marginTop: "0.45rem", minHeight: "3rem", width: "100%" }}
+            disabled={busy}
+          />
+          <div className="row2">
+            <button className="btn primary" onClick={saveSchedule} disabled={busy}>
+              Save date & context
+            </button>
+          </div>
+        </div>
+      )}
       {!done ? (
         <>
           {draft ? (

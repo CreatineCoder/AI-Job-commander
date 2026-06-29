@@ -51,7 +51,7 @@ export function fuState(followups, r) {
   if (!fu) return null;
   if (field(f, "is_followup_sent") === true) return null; // user did the follow-up → no alarm
   const st = field(r, "status");
-  if (st === "rejected" || st === "withdrawn" || st === "offer") return null;
+  if (st === "rejected" || st === "offer") return null;
   const d = String(fu).slice(0, 10),
     t = todayISO();
   return d === t ? "today" : d < t ? "overdue" : "upcoming";

@@ -13,6 +13,7 @@
     { "name": "last_alarm_at", "type": "DATETIME" },
     { "name": "followup_subject", "type": "TEXT", "max_length": 240 },
     { "name": "followup_message", "type": "TEXT" },
+    { "name": "date_reason", "type": "TEXT", "max_length": 240 },
     { "name": "notes", "type": "TEXT" }
   ],
   "config": {}

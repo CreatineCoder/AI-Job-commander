@@ -21,7 +21,7 @@ export default function StatBar({ rows, onAdd }) {
   const total = rows.length;
   const active = rows.filter((r) => {
     const s = field(r, "status");
-    return s !== "rejected" && s !== "withdrawn";
+    return s !== "rejected";
   }).length;
   const scores = rows
     .map((r) => Number(field(r, "match_score")))

@@ -1,0 +1,12 @@
+{
+  "name": "followup_scheduler",
+  "description": "Picks a sensible follow-up date for an application from the stage, JD and any pasted recruiter context, writing the date + a short reason to the followups row.",
+  "instruction": { "$file": "instruction.md" },
+  "toolsets": ["POD"],
+  "visibility": "POD",
+  "agent_runtime": { "profile_id": "system:lemma", "model_name": "kimi-k2.7-code" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "followups",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] }
+  ] }
+}

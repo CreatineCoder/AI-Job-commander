@@ -12,9 +12,13 @@ from lemma_sdk import FunctionContext, Pod
 GMAIL_AUTH_CONFIG = "Gmail (Composio)"
 GMAIL_CONNECTOR = "gmail"
 
-# When outreach is sent, schedule a follow-up this many days out.
-# TESTING: 0 = same-day follow-up (due immediately). Set back to 5 for production.
-FOLLOW_UP_DAYS = 0
+# Auto-default follow-up lead time per stage (days). The user can refine the date later
+# (paste recruiter context → followup_scheduler agent, or pick a date manually on the board).
+STAGE_DAYS = {"applied": 7, "screening": 5, "interview": 3, "offer": 3, "rejected": 7}
+
+
+def _days_for_stage(stage):
+    return STAGE_DAYS.get(str(stage or "").lower(), 7)
 
 
 class SendEmailInput(BaseModel):
@@ -309,7 +313,7 @@ async def send_email(ctx: FunctionContext, data: SendEmailInput) -> SendEmailRes
 
     # Schedule the follow-up in the dedicated followups table (one row per application).
     # The reminder always goes to the user's profile email — handled by run_followups.
-    follow_up_date = (now + timedelta(days=FOLLOW_UP_DAYS)).date().isoformat()
+    follow_up_date = (now + timedelta(days=_days_for_stage(rec.get("status") or "applied"))).date().isoformat()
     fts = pod.table("followups")
     try:
         existing = [f for f in _items(fts.list(limit=500))

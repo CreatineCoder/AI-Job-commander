@@ -37,6 +37,7 @@ export default function App() {
     const { rows, followups } = await loadData(clientRef.current);
     setRows(rows);
     setFollowups(followups);
+    return { rows, followups };
   }, []);
 
   // Keep the view in sync with the URL so the browser Back/Forward buttons work.

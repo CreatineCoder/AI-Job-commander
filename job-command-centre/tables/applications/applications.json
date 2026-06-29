@@ -22,10 +22,11 @@
       "options": ["none", "drafted", "approved", "sent"] },
     { "name": "sent_at", "type": "DATETIME" },
     { "name": "status", "type": "ENUM", "required": true, "default": "applied",
-      "options": ["applied", "screening", "interview", "offer", "rejected", "withdrawn"] },
+      "options": ["applied", "screening", "interview", "offer", "rejected"] },
     { "name": "sub_status", "type": "TEXT", "max_length": 60 },
     { "name": "next_action", "type": "TEXT" },
     { "name": "todos", "type": "JSON" },
+    { "name": "interview_prep", "type": "JSON" },
     { "name": "contact_name", "type": "TEXT", "max_length": 160 },
     { "name": "contact_email", "type": "TEXT", "max_length": 240 },
     { "name": "notes", "type": "TEXT" }

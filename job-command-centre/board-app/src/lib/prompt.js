@@ -18,6 +18,13 @@ function line(label, v) {
   return s ? label + ": " + s + "\n" : "";
 }
 
+// Bound a value's text length so we don't blow up the prompt with long prose
+// (raw resume / JD boilerplate). Keeps the head — where the substance usually is.
+function clip(v, n) {
+  const s = val(v);
+  return s.length <= n ? s : s.slice(0, n) + " …[truncated]";
+}
+
 // Builds a single self-contained context block embedding everything the drafting
 // agents need (application + resume + profile), so the agent makes NO read calls
 // and only does one write. Used by outreach + follow-up generation.
@@ -32,19 +39,31 @@ export function agentContextBlock(r, resume, profile) {
   s += line("contact_email", field(r, "contact_email"));
   s += line("email_subject", field(r, "email_subject"));
 
+  // The JD's hard requirements are already extracted into must_have_skills above,
+  // so a capped JD keeps the signal and drops boilerplate.
   const jd = field(r, "jd_text");
-  if (jd) s += "\n=== JOB DESCRIPTION ===\n" + jd + "\n";
+  if (jd) s += "\n=== JOB DESCRIPTION ===\n" + clip(jd, 1400) + "\n";
 
   if (resume) {
     s += "\n=== RESUME USED ===\n";
-    const raw = field(resume, "raw_resume_text");
-    if (raw) {
-      s += raw + "\n";
+    // Prefer the PARSED resume fields — they carry the real evidence (skills,
+    // experience, projects) far more compactly than the full raw page. Only fall
+    // back to the raw text (capped) when the resume wasn't parsed into fields.
+    const skills = asArray(field(resume, "skills"));
+    const work = field(resume, "work_experience");
+    const projects = field(resume, "projects");
+    const hasParsed = skills.length || work || projects;
+    if (hasParsed) {
+      let rb = "";
+      rb += line("skills", skills);
+      rb += line("work_experience", work);
+      rb += line("projects", projects);
+      rb += line("competitions", field(resume, "competitions"));
+      rb += line("education", field(resume, "education"));
+      rb += line("certifications", field(resume, "certifications"));
+      s += clip(rb, 2400);
     } else {
-      s += line("skills", asArray(field(resume, "skills")));
-      s += line("projects", field(resume, "projects"));
-      s += line("work_experience", field(resume, "work_experience"));
-      s += line("competitions", field(resume, "competitions"));
+      s += clip(field(resume, "raw_resume_text"), 2000) + "\n";
     }
   }
 

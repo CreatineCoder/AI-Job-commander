@@ -117,6 +117,24 @@ export async function pollFollowup(client, appId, oldVal, timeoutMs) {
   return false;
 }
 
+// Poll the followups row (by application id) until a given field changes.
+export async function pollFollowupField(client, appId, fieldName, oldVal, timeoutMs) {
+  const start = Date.now();
+  do {
+    let followups = {};
+    try {
+      ({ followups } = await loadData(client));
+    } catch (e) {
+      /* retry */
+    }
+    const f = followups[appId];
+    if (f && String(field(f, fieldName) || "") !== String(oldVal)) return true;
+    if (Date.now() - start >= timeoutMs) break;
+    await sleep(POLL_MS);
+  } while (Date.now() - start < timeoutMs);
+  return false;
+}
+
 // Fetch the resume_data row used by an application (by resume_id), or null.
 export async function getResume(client, resumeId) {
   if (!resumeId) return null;

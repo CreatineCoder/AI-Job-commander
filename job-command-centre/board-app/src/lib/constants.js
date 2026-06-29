@@ -5,7 +5,6 @@ export const STAGES = [
   { k: "interview", label: "Interview", c: "var(--interview)" },
   { k: "offer", label: "Offer", c: "var(--offer)" },
   { k: "rejected", label: "Rejected", c: "var(--rejected)" },
-  { k: "withdrawn", label: "Withdrawn", c: "var(--withdrawn)" },
 ];
 
 export const AGENT = "parser_scorer";

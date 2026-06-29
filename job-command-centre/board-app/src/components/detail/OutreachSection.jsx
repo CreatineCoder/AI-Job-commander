@@ -22,7 +22,7 @@ export default function OutreachSection({ r, id, getContact }) {
 
   async function gen() {
     setBusy(true);
-    setText("Drafting email & cover letter… (~30–60s)", true);
+    setText("Drafting the email… (~20–40s)", true);
     const oldDraft = String(field(r, "draft_message") || "");
     // Fetch the resume + profile up front and embed them, so the agent makes NO
     // read calls — it only does a single update (cuts ~3 LLM round-trips).
@@ -31,11 +31,12 @@ export default function OutreachSection({ r, id, getContact }) {
       getProfile(client),
     ]);
     const msg =
-      "Draft outreach for application id: " +
+      "EMAIL mode. Draft outreach for application id: " +
       id +
-      ". ALL context you need is provided below — do NOT read any tables. Write email_subject, " +
-      "draft_message (the recruiter email) and cover_letter, set outreach_status to 'drafted', and " +
-      "persist them with a SINGLE update to the applications row id=" +
+      ". ALL context you need is provided below — do NOT read any tables. Write email_subject and " +
+      "draft_message (the recruiter email) and set outreach_status to 'drafted'. Do NOT write " +
+      "cover_letter (it is generated separately). Persist with a SINGLE update to the applications " +
+      "row id=" +
       id +
       " (do not change status, resume_id, or create new rows).\n\n" +
       agentContextBlock(r, resume, profile);
@@ -47,6 +48,38 @@ export default function OutreachSection({ r, id, getContact }) {
         setStatus(null);
       } else {
         setText("Still drafting — reopen the card shortly.");
+      }
+    } catch (e) {
+      setText("Failed: " + ((e && e.message) || "error"));
+    }
+    setBusy(false);
+  }
+
+  // Cover letter is generated on demand (separate, slower call) — keeps the email fast.
+  async function genCover() {
+    setBusy(true);
+    setText("Writing the cover letter… (~20–40s)", true);
+    const oldCover = String(field(r, "cover_letter") || "");
+    const [resume, profile] = await Promise.all([
+      getResume(client, field(r, "resume_id")),
+      getProfile(client),
+    ]);
+    const msg =
+      "COVER_LETTER mode. Write ONLY the cover_letter for application id: " +
+      id +
+      ". ALL context is provided below — do NOT read any tables. Do NOT touch email_subject, " +
+      "draft_message or outreach_status. Persist with a SINGLE update to the applications row id=" +
+      id +
+      ".\n\n" +
+      agentContextBlock(r, resume, profile);
+    try {
+      await client.agents.run(OUTREACH, msg);
+      const ok = await pollChange(client, id, "cover_letter", oldCover, 90000);
+      if (ok) {
+        await reload();
+        setStatus(null);
+      } else {
+        setText("Still writing — reopen the card shortly.");
       }
     } catch (e) {
       setText("Failed: " + ((e && e.message) || "error"));
@@ -202,7 +235,7 @@ export default function OutreachSection({ r, id, getContact }) {
                 Cover letter
               </summary>
               <div
-                className="val"
+                classNaestion on what we would be building as nme="val"
                 style={{
                   marginTop: "0.4rem",
                   background: "var(--paper)",

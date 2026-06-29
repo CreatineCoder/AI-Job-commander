@@ -10,7 +10,7 @@ GMAIL_AUTH_CONFIG = "Gmail (Composio)"
 GMAIL_CONNECTOR = "gmail"
 
 # Application statuses where chasing a follow-up no longer makes sense.
-TERMINAL = {"rejected", "withdrawn", "offer"}
+TERMINAL = {"rejected", "offer"}
 
 
 class RunFollowupsInput(BaseModel):

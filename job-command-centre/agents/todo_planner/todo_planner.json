@@ -1,0 +1,12 @@
+{
+  "name": "todo_planner",
+  "description": "Generates a short, stage-specific action checklist (to-dos) for an application, so the operator knows exactly what to do to advance from the current stage.",
+  "instruction": { "$file": "instruction.md" },
+  "toolsets": ["POD"],
+  "visibility": "POD",
+  "agent_runtime": { "profile_id": "system:lemma", "model_name": "kimi-k2.7-code" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "applications",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] }
+  ] }
+}

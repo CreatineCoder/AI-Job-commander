@@ -10,9 +10,13 @@ from lemma_sdk import FunctionContext, Pod
 # outreach (send_email), and terminal stages have nothing to chase.
 ACTIVE_STAGES = {"screening", "interview", "offer"}
 
-# Days to wait before a stage follow-up is due. Keep in sync with send_email.
-# TESTING: 0 = due immediately. Set to 5 for production.
-FOLLOW_UP_DAYS = 0
+# Auto-default follow-up lead time per stage (days). Keep in sync with send_email.
+# The user can refine the date later (scheduler agent or manual pick on the board).
+STAGE_DAYS = {"applied": 7, "screening": 5, "interview": 3, "offer": 3, "rejected": 7}
+
+
+def _days_for_stage(stage):
+    return STAGE_DAYS.get(str(stage or "").lower(), 7)
 
 
 class ScheduleFollowupInput(BaseModel):
@@ -76,7 +80,7 @@ async def schedule_followup(ctx: FunctionContext, data: ScheduleFollowupInput) -
     except Exception:
         pass
 
-    follow_up_date = (datetime.now(timezone.utc).date() + timedelta(days=FOLLOW_UP_DAYS)).isoformat()
+    follow_up_date = (datetime.now(timezone.utc).date() + timedelta(days=_days_for_stage(stage))).isoformat()
     payload = {
         "application_id": data.application_id,
         "stage": stage,

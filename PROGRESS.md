@@ -29,7 +29,7 @@ primitive (datastores, agents, functions, app, connectors).
   is_default=true holds Devansh's real resume.
 - **`applications`** (many) — the pipeline / source of truth. Key cols: company, role, jd_text,
   `resume_id` (FK→resume_data.id), must_have_skills, match_score, resume_gaps, suggested_topics,
-  `status` enum (applied/screening/interview/offer/rejected/withdrawn), sub_status, next_action,
+  `status` enum (applied/screening/interview/offer/rejected), sub_status, next_action,
   follow_up_date, contact_name, contact_email, email_subject, draft_message, cover_letter,
   `outreach_status` enum (none/drafted/approved/sent), sent_at.
 - **`followups`** (many) — dedicated follow-up tracking, decoupled from applications. Cols:
@@ -234,10 +234,77 @@ All linked by Lemma's auto `user_id` (RLS).
       just when due — proactive follow-ups allowed); and once done, a "Follow up again" button
       reopens the row (`is_followup_sent`/`followup_alarm_sent`→false, clears the draft) so the user
       can send another. Board-only change (rebuild + `lemma app deploy`).
+- [x] **Removed 'withdrawn' stage** — ✅ DONE 2026-06-29. Dropped from the `applications.status`
+      ENUM, board STAGES/columns, `--withdrawn` CSS var, StatBar active-count, helpers `fuState`
+      terminal check, and `run_followups` TERMINAL set. (schedule_followup never referenced it.)
+      Requires FULL deploy (table enum import + board).
+- [x] **Next-stage action-plan agent (to-do list)** — ✅ DONE 2026-06-29 (from the drawio vision's
+      "add a to-do list for the next stage" node). New agent **`todo_planner`** (kimi, applications
+      r/w): given inline app context + current `stage`, writes the existing `todos` JSON column as
+      `{stage, items:[{text,done:false}]}` (4–6 concrete actions) via a SINGLE update. Stage playbook
+      covers applied/screening/interview/offer/rejected. New board **TodoSection** (DetailPage,
+      shown for every stage): "Generate action plan" → checklist with checkboxes that persist back
+      to `todos` (toggle = records.update); shows N/M done + a "regenerate for <stage>" prompt when
+      the list is stale (planned stage ≠ current). No schema change (todos column already existed).
+      Requires FULL deploy (agent import + board).
+- [x] **Dynamic / custom follow-up dates** — ✅ DONE 2026-06-29. Replaced the single fixed
+      `FOLLOW_UP_DAYS` with: (1) **per-stage auto-defaults** (`STAGE_DAYS` applied7/screening5/
+      interview3/offer3/rejected7) in BOTH `send_email` + `schedule_followup`; (2) a new agent
+      **`followup_scheduler`** (kimi, followups r/w) that reads TODAY + stage + JD + a pasted context
+      note and writes `follow_up_date` + `date_reason` (explicit recruiter timeframe wins, else stage
+      default, weekday-shifted, never past); (3) board FollowupSection now has a **date picker**
+      (manual override → date_reason "Set manually."), a **"Suggest date from context"** button
+      (runs the agent), and a **context textarea** saved to followups `notes`. New column
+      `date_reason` on followups; reused existing `notes`. Added `pollFollowupField` helper.
+      NOTE: per-stage defaults mean nothing is due *immediately* anymore — for a demo, use the date
+      picker to set today/past. Requires FULL deploy (table+functions+agent import + board).
+      - **Save UX + alarm re-arm (2026-06-29):** date/context no longer auto-save — added an explicit
+        "Save date & context" button + a confirmation popup (window.alert). Both manual Save and the
+        "Suggest date" agent now reset `followup_alarm_sent=false` on a date change so the daily
+        reminder (`run_followups`, cron 9am) re-fires for the NEW date (else a previously-sent alarm
+        would suppress it). Alarm date == `follow_up_date` (digest goes out the morning it's due);
+        `followup_alarm_sent` dedupes. `reload()` now returns {rows,followups} for post-save reads.
+      - **Unified Save + context-overrides-date (2026-06-29):** merged the date picker + context into
+        ONE "Save date & context" action (removed the separate "Suggest date" button). On Save: saves
+        the note + manual date, then if a note is present runs `followup_scheduler` which OVERRIDES the
+        date when the note/JD contains an explicit date/timeframe, else KEEPS the existing date (agent
+        instruction now takes `=== CURRENT FOLLOW-UP DATE ===` and preserves it when no date found —
+        so a stage default no longer clobbers a manual date). Derived date shows in the calendar
+        input (key={follow_up_date} remounts it) + confirmation popup names the date.
+- [x] **Cover letter on demand (perf)** — ✅ DONE 2026-06-30. To speed up outreach generation
+      (agent calls run ~60s due to the multi-turn agent loop on hosted kimi + big prompts/outputs),
+      `outreach_writer` now has TWO modes: **EMAIL mode** (default, writes email_subject +
+      draft_message + outreach_status — NO cover_letter, the slow long output) and **COVER_LETTER
+      mode** (writes only cover_letter). Board OutreachSection: "Generate outreach" runs EMAIL mode;
+      a separate "Generate cover letter" button (with "Regenerate") writes the cover letter on
+      demand. The PDF attachment in send_email already no-ops gracefully when cover_letter is empty.
+      Agent + board deploy.
+- [x] **Interview prep pack (closes the named problem-statement gap)** — ✅ BUILT 2026-06-30
+      (deploy pending Lemma API recovery). The official problem statement lists "prepares interview
+      notes" as a deliverable we were missing. New agent **`interview_prep`** (kimi, applications
+      r/w): from inline app context (company/role/must_haves/resume_gaps + JD + resume) writes the
+      new `interview_prep` JSON column = {star:[{prompt,situation,task,action,result}], watch_outs,
+      research}. Read-only, one-click. Scope chosen: AI prep pack only; sections = STAR answer
+      scaffolds + watch-outs + research (no separate "likely questions" / "questions to ask" list).
+      Guardrail: never fabricate STAR stories — unmet must-haves go to watch_outs. Board
+      **InterviewPrepSection** (DetailPage, shown for screening/interview/offer stages): "Generate
+      interview prep" → STAR cards + "Be ready for" + "Research" lists + Regenerate. New column
+      `interview_prep` on applications. FULL deploy (table+agent import + board).
 - [ ] **Stretch:** inbound email (Gmail surface) → auto-update status; narrow Gmail scope via
       custom OAuth (optional, low priority).
 - [ ] Clean up any stale/test application rows before the demo; record the demo video (see
       ARCHITECTURE.md §13 demo script).
+
+### 🚀 DEPLOYED 2026-06-29 (14:47)
+All of the above session work is LIVE: `lemma pods import .` (todo_planner CREATED, applications
+enum/withdrawn removed, send_email fix, run_followups) + `lemma app deploy` (board release
+`019f13d9…`, status READY). Transient blips hit during deploy: a ReadTimeout and a WinError 10061
+connection-refused — both cleared on retry (api.lemma.work was reachable). Reminder: run import from
+INSIDE `job-command-centre/`.
+
+Still pending before submission: bump FOLLOW_UP_DAYS 0→5 (send_email + schedule_followup), nail the
+Composio PDF attachment format (verify via a real Send + the function-exec error), clean test rows,
+record demo video.
 
 ### Immediate to-do (deploy + housekeeping — as of 2026-06-28)
 - [ ] **DEPLOY — nothing above is live yet.** Backend then board:

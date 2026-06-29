@@ -1,0 +1,12 @@
+{
+  "name": "interview_prep",
+  "description": "Generates a tailored interview prep pack (STAR answer scaffolds + watch-outs + research topics) for an application, written to the interview_prep column.",
+  "instruction": { "$file": "instruction.md" },
+  "toolsets": ["POD"],
+  "visibility": "POD",
+  "agent_runtime": { "profile_id": "system:lemma", "model_name": "kimi-k2.7-code" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "applications",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] }
+  ] }
+}
