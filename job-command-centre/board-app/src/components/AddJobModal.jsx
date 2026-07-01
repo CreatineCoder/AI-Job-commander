@@ -1,9 +1,40 @@
 import { useRef, useState } from "react";
 import Modal from "./Modal.jsx";
 import { useApp } from "../AppContext.jsx";
-import { AGENT, TABLE } from "../lib/constants.js";
-import { field } from "../lib/helpers.js";
-import { pollNew, uploadResumePdf } from "../lib/data.js";
+import { RESUME_EXTRACTOR, JD_PARSER, FIT_SCORER, TABLE } from "../lib/constants.js";
+import { field, asArray } from "../lib/helpers.js";
+import {
+  pollNew,
+  pollChange,
+  countResumes,
+  pollNewResume,
+  getDefaultResume,
+  uploadResumePdf,
+} from "../lib/data.js";
+
+// Distill a resume_data row into a compact summary for fit_scorer — just the
+// signal it needs to judge skills, without shipping the full raw resume text again.
+function resumeSummary(row) {
+  const lines = [];
+  const skills = asArray(field(row, "skills"));
+  if (skills.length) lines.push("Skills: " + skills.join(", "));
+  asArray(field(row, "projects")).forEach((p) => {
+    if (!p) return;
+    const o = typeof p === "string" ? { name: p } : p;
+    lines.push("Project: " + [o.name, o.description, o.tech].filter(Boolean).join(" — "));
+  });
+  asArray(field(row, "work_experience")).forEach((w) => {
+    if (!w) return;
+    const o = typeof w === "string" ? { role: w } : w;
+    lines.push("Experience: " + [o.role, o.company, o.duration, o.description].filter(Boolean).join(" — "));
+  });
+  asArray(field(row, "competitions")).forEach((c) => {
+    if (c) lines.push("Competition: " + (typeof c === "string" ? c : JSON.stringify(c)));
+  });
+  const text = lines.join("\n");
+  // Fall back to the raw text (trimmed) if we couldn't extract structured fields.
+  return text || String(field(row, "raw_resume_text") || "").slice(0, 2500);
+}
 
 export default function AddJobModal({ onClose }) {
   const { client, rows, reload } = useApp();
@@ -45,34 +76,72 @@ export default function AddJobModal({ onClose }) {
     }
     const rz = rzRef.current.value.trim();
     setBusy(true);
-    setStatus({ spin: true, text: "Sending to the agent… this can take ~30–60s." });
-    const before = rows.length;
+    const appsBefore = rows.length;
     try {
-      const msg = rz
-        ? "Add this job. Store this resume as a new resume_data row, then parse the JD, score this resume against it, list gaps, suggest prep topics, and create the application row linked via resume_id.\n\nRESUME:\n" +
-          rz +
-          "\n\nJOB DESCRIPTION:\n" +
-          jd
-        : "Add this job. Use my default resume_data row (is_default = true) as the resume — do not ask me for one. Parse the JD, score that resume against it, list gaps, suggest prep topics, and create the application row linked via resume_id.\n\nJOB DESCRIPTION:\n" +
-          jd;
-      await client.agents.run(AGENT, msg);
-      setStatus({ spin: true, text: "Agent is parsing & scoring…" });
-      const newRow = await pollNew(client, before, 90000);
-      if (newRow) {
-        // Link the uploaded PDF to the new application so it can be emailed as a CV link.
-        if (resumePath && field(newRow, "id")) {
-          try {
-            await client.records.update(TABLE, field(newRow, "id"), { resume_file: resumePath });
-          } catch (e) {
-            /* non-fatal */
-          }
+      // Stage A — run resume storage and JD parsing IN PARALLEL. Each is a focused,
+      // single-turn agent, so the two heavy extraction steps overlap instead of queueing.
+      setStatus({ spin: true, text: "Parsing the job & saving your resume (in parallel)…" });
+
+      const resumeTask = (async () => {
+        if (!rz) {
+          // No resume pasted → fall back to the user's default resume version.
+          return await getDefaultResume(client);
         }
-        await reload();
-        onClose();
-      } else {
-        setStatus({ spin: false, text: "Still working — it may appear shortly. Close and refresh in a moment." });
+        const rzBefore = await countResumes(client);
+        await client.agents.run(
+          RESUME_EXTRACTOR,
+          "Store this resume as a new resume_data version row, extracting skills, projects, " +
+            "experience and education. Make exactly one create call.\n\nRESUME:\n" + rz
+        );
+        return await pollNewResume(client, rzBefore, 90000);
+      })();
+
+      const jdTask = (async () => {
+        await client.agents.run(
+          JD_PARSER,
+          "Parse this job description and create the applications shell row (company, role, " +
+            "must_have_skills, jd_text, status='applied', sub_status='resume_screen'). Do NOT " +
+            "score or set match_score/resume_id.\n\nJOB DESCRIPTION:\n" + jd
+        );
+        return await pollNew(client, appsBefore, 90000);
+      })();
+
+      const [resumeRow, appRow] = await Promise.all([resumeTask, jdTask]);
+
+      if (!appRow || !field(appRow, "id")) {
+        setStatus({ spin: false, text: "Couldn't create the job card — try again in a moment." });
         setBusy(false);
+        return;
       }
+      const appId = field(appRow, "id");
+      const resumeId = resumeRow ? field(resumeRow, "id") : "";
+
+      // Stage B — score fit and fill in the row. Context is inlined (must-haves + a
+      // distilled resume), so fit_scorer makes just two calls: score_match + update.
+      setStatus({ spin: true, text: "Scoring your fit against the role…" });
+      const mustHaves = asArray(field(appRow, "must_have_skills")).join(", ");
+      const summary = resumeRow ? resumeSummary(resumeRow) : "(no resume on file)";
+      const oldScore = String(field(appRow, "match_score") || "");
+      await client.agents.run(
+        FIT_SCORER,
+        "Score fit and update the application row. application id: " + appId +
+          ". resume_id: " + (resumeId || "(none)") +
+          ". Judge each required skill against the resume, call score_match, then update ONLY " +
+          "match_score, resume_gaps, suggested_topics, next_action and resume_id on that row.\n\n" +
+          "must_have_skills: " + mustHaves + "\n\nRESUME:\n" + summary
+      );
+      await pollChange(client, appId, "match_score", oldScore, 90000);
+
+      // Link the uploaded PDF so it can later be emailed as a CV link.
+      if (resumePath) {
+        try {
+          await client.records.update(TABLE, appId, { resume_file: resumePath });
+        } catch (e) {
+          /* non-fatal */
+        }
+      }
+      await reload();
+      onClose();
     } catch (e) {
       setStatus({ spin: false, text: "Failed: " + ((e && e.message) || "error") });
       setBusy(false);

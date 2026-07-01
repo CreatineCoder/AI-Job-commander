@@ -1,0 +1,14 @@
+{
+  "name": "resume_extractor",
+  "description": "Intake step 1: stores a resume as a resume_data version row, extracting skills, projects, experience and education from the raw text.",
+  "instruction": { "$file": "instruction.md" },
+  "toolsets": ["POD"],
+  "visibility": "POD",
+  "agent_runtime": { "profile_id": "system:lemma", "model_name": "kimi-k2.7-code" },
+  "permissions": { "grants": [
+    { "resource_type": "datastore_table", "resource_name": "resume_data",
+      "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
+    { "resource_type": "datastore_table", "resource_name": "user_profile",
+      "permission_ids": ["datastore.table.read", "datastore.record.read"] }
+  ] }
+}

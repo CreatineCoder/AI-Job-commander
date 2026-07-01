@@ -19,6 +19,7 @@ export default function DetailPage({ id, onBack }) {
   const [cemail, setCemail] = useState(() => (r ? field(r, "contact_email") || "" : ""));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [tab, setTab] = useState("prep"); // "prep" | "outreach"
 
   if (!r) {
     return (
@@ -133,137 +134,173 @@ export default function DetailPage({ id, onBack }) {
           )}
         </div>
 
-        {/* Dashboard grid */}
-        <div className="dash">
-          <div className="dash-main">
-            {hasDetails && (
-              <div className="panel">
-                <div className="panel-title">Role details</div>
-                {skills.length > 0 && (
-                  <>
-                    <label>Required skills</label>
-                    <div className="chips">
-                      {skills.map((s, i) => (
-                        <span className="tag" key={i}>
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {field(r, "resume_gaps") && (
-                  <>
-                    <label>Resume gaps</label>
-                    <div className="val">{field(r, "resume_gaps")}</div>
-                  </>
-                )}
-                {topics.length > 0 && (
-                  <>
-                    <label>Prep while you wait</label>
-                    <div className="chips">
-                      {topics.map((s, i) => (
-                        <span className="tag" key={i}>
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {field(r, "next_action") && (
-                  <>
-                    <label>Next action</label>
-                    <div className="val">{field(r, "next_action")}</div>
-                  </>
-                )}
-              </div>
-            )}
+        {/* Section tabs: role/prep on one side, outreach/manage on the other. */}
+        <div className="tabs">
+          <button
+            className={"tab" + (tab === "prep" ? " active" : "")}
+            onClick={() => setTab("prep")}
+          >
+            Overview &amp; Prep
+          </button>
+          <button
+            className={"tab" + (tab === "outreach" ? " active" : "")}
+            onClick={() => setTab("outreach")}
+          >
+            Outreach &amp; Manage
+          </button>
+        </div>
 
-            <div className="panel">
-              <TodoSection r={r} id={id} />
+        {tab === "prep" ? (
+          /* ── Overview & Prep: role details, action plan, interview prep, JD; resume update on the side ── */
+          <div className="dash">
+            <div className="dash-main">
+              {hasDetails && (
+                <div className="panel">
+                  <div className="panel-title">Role details</div>
+                  <div className="subsections">
+                    {skills.length > 0 && (
+                      <>
+                        <label>Required skills</label>
+                        <div className="chips">
+                          {skills.map((s, i) => (
+                            <span className="tag" key={i}>
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {field(r, "resume_gaps") && (
+                      <>
+                        <label>Resume gaps</label>
+                        <div className="val">{field(r, "resume_gaps")}</div>
+                      </>
+                    )}
+                    {topics.length > 0 && (
+                      <>
+                        <label>Prep while you wait</label>
+                        <div className="chips">
+                          {topics.map((s, i) => (
+                            <span className="tag" key={i}>
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {field(r, "next_action") && (
+                      <>
+                        <label>Next action</label>
+                        <div className="val">{field(r, "next_action")}</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="panel">
+                <TodoSection r={r} id={id} />
+              </div>
+
+              {/* Interview prep is relevant once you're in/through the pipeline. */}
+              {["screening", "interview", "offer"].includes(field(r, "status") || "") && (
+                <div className="panel">
+                  <InterviewPrepSection r={r} id={id} />
+                </div>
+              )}
+
+              {field(r, "jd_text") && (
+                <div className="panel">
+                  <div className="panel-title">Job description</div>
+                  <div className="val" style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
+                    {field(r, "jd_text")}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Interview prep is relevant once you're in/through the pipeline. */}
-            {["screening", "interview", "offer"].includes(field(r, "status") || "") && (
-              <div className="panel">
-                <InterviewPrepSection r={r} id={id} />
+            <aside className="dash-side">
+              <div className="panel sticky">
+                <ResumeImproveSection r={r} id={id} />
               </div>
-            )}
+            </aside>
+          </div>
+        ) : (
+          /* ── Outreach & Manage: outreach + follow-up, with the manage panel on the side ── */
+          <div className="dash">
+            <div className="dash-main">
+              {/* Outreach only makes sense before the pipeline moves on — gate to 'applied'. */}
+              {(field(r, "status") || "applied") === "applied" && (
+                <div className="panel">
+                  <OutreachSection r={r} id={id} getContact={getContact} />
+                </div>
+              )}
 
-            {/* Outreach only makes sense before the pipeline moves on — gate to 'applied'. */}
-            {(field(r, "status") || "applied") === "applied" && (
-              <div className="panel">
-                <OutreachSection r={r} id={id} getContact={getContact} />
-              </div>
-            )}
+              {f && (
+                <div className="panel">
+                  <FollowupSection r={r} id={id} getContact={getContact} />
+                </div>
+              )}
 
-            {f && (
-              <div className="panel">
-                <FollowupSection r={r} id={id} getContact={getContact} />
-              </div>
-            )}
+              {(field(r, "status") || "applied") !== "applied" && !f && (
+                <div className="panel">
+                  <div style={{ color: "var(--muted)", fontSize: "0.88rem" }}>
+                    No outreach or follow-up for this stage yet. Send outreach while a job is in
+                    <b> Applied</b>, or move the stage to start a follow-up.
+                  </div>
+                </div>
+              )}
+            </div>
 
-            {field(r, "jd_text") && (
-              <div className="panel">
-                <div className="panel-title">Job description</div>
-                <div className="val" style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
-                  {field(r, "jd_text")}
+            <aside className="dash-side">
+              <div className="panel sticky">
+                <div className="panel-title">Manage</div>
+
+                <label style={{ marginTop: 0 }}>Stage</label>
+                <select value={stg} onChange={(e) => setStg(e.target.value)}>
+                  {STAGES.map((s) => (
+                    <option key={s.k} value={s.k}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label>Sub-status</label>
+                <input
+                  value={sub}
+                  onChange={(e) => setSub(e.target.value)}
+                  placeholder="e.g. round_1, test"
+                />
+
+                <label>
+                  Recruiter name{" "}
+                  <span style={{ textTransform: "none", color: "var(--muted)" }}>(optional)</span>
+                </label>
+                <input
+                  value={cname}
+                  onChange={(e) => setCname(e.target.value)}
+                  placeholder="Recruiter / referral name"
+                />
+
+                <label>Recruiter email</label>
+                <input
+                  value={cemail}
+                  onChange={(e) => setCemail(e.target.value)}
+                  placeholder="name@company.com"
+                />
+
+                <div className="row2">
+                  <button className="btn primary" onClick={save} disabled={saving}>
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  <button className="btn danger" onClick={del} disabled={deleting}>
+                    Delete
+                  </button>
                 </div>
               </div>
-            )}
+            </aside>
           </div>
-
-          <aside className="dash-side">
-            <div className="panel sticky">
-              <div className="panel-title">Manage</div>
-
-              <label style={{ marginTop: 0 }}>Stage</label>
-              <select value={stg} onChange={(e) => setStg(e.target.value)}>
-                {STAGES.map((s) => (
-                  <option key={s.k} value={s.k}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-
-              <label>Sub-status</label>
-              <input
-                value={sub}
-                onChange={(e) => setSub(e.target.value)}
-                placeholder="e.g. round_1, test"
-              />
-
-              <label>
-                Recruiter name{" "}
-                <span style={{ textTransform: "none", color: "var(--muted)" }}>(optional)</span>
-              </label>
-              <input
-                value={cname}
-                onChange={(e) => setCname(e.target.value)}
-                placeholder="Recruiter / referral name"
-              />
-
-              <label>Recruiter email</label>
-              <input
-                value={cemail}
-                onChange={(e) => setCemail(e.target.value)}
-                placeholder="name@company.com"
-              />
-
-              <div className="row2">
-                <button className="btn primary" onClick={save} disabled={saving}>
-                  {saving ? "Saving…" : "Save"}
-                </button>
-                <button className="btn danger" onClick={del} disabled={deleting}>
-                  Delete
-                </button>
-              </div>
-            </div>
-
-            <div className="panel">
-              <ResumeImproveSection r={r} id={id} />
-            </div>
-          </aside>
-        </div>
+        )}
       </div>
     </div>
   );

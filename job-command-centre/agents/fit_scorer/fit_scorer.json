@@ -1,6 +1,6 @@
 {
-  "name": "outreach_writer",
-  "description": "Drafts a tailored recruiter email or a short LinkedIn message for an application, in the operator's voice, ready for human review before sending.",
+  "name": "fit_scorer",
+  "description": "Intake step 3: judges the resume against the JD's required skills, calls score_match for a deterministic score, and fills in the application row (score, gaps, topics, next action, resume link).",
   "instruction": { "$file": "instruction.md" },
   "toolsets": ["POD"],
   "visibility": "POD",
@@ -10,9 +10,7 @@
       "permission_ids": ["datastore.table.read", "datastore.record.read", "datastore.record.write"] },
     { "resource_type": "datastore_table", "resource_name": "resume_data",
       "permission_ids": ["datastore.table.read", "datastore.record.read"] },
-    { "resource_type": "datastore_table", "resource_name": "user_profile",
-      "permission_ids": ["datastore.table.read", "datastore.record.read"] },
-    { "resource_type": "datastore_table", "resource_name": "permissions",
-      "permission_ids": ["datastore.table.read", "datastore.record.read"] }
+    { "resource_type": "function", "resource_name": "score_match",
+      "permission_ids": ["function.read", "function.execute"] }
   ] }
 }

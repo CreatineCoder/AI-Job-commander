@@ -255,6 +255,19 @@ h1 {
   color: var(--muted);
   margin: 1rem 0 0.3rem;
 }
+/* Stacked sub-sections (label + content) inside a single panel need clearer
+   separation so they don't blur into one block: more top space + a hairline
+   divider above each group, except the first one right under the panel title. */
+.subsections label {
+  margin-top: 1.7rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+.subsections label:first-child {
+  margin-top: 0.4rem;
+  padding-top: 0;
+  border-top: none;
+}
 .modal .val,
 .page .val {
   white-space: pre-wrap;
@@ -388,7 +401,8 @@ h1 {
   margin: 0 auto;
 }
 .page.detail {
-  max-width: 1120px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 .pagebar {
   display: flex;
@@ -464,6 +478,38 @@ h1 {
   flex-wrap: wrap;
   align-items: center;
   margin: 0.9rem 0 0.2rem;
+}
+/* Detail-page section tabs — compact themed segmented control */
+.tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin: 1.3rem 0 0.2rem;
+  padding: 0.3rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tab {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: background 0.15s, color 0.15s;
+}
+.tab:hover {
+  color: var(--ink);
+  background: rgba(127, 127, 127, 0.08);
+}
+.tab.active {
+  color: #1c1a17;
+  background: var(--gold);
+}
+.tab.active:hover {
+  background: var(--gold);
 }
 .metarow .tag {
   font-size: 0.74rem;

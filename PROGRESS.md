@@ -147,6 +147,14 @@ All linked by Lemma's auto `user_id` (RLS).
 5. ✅ Resume-improvement loop
 6. ✅ outreach_writer + human-approval flow (Generate→Approve→Send)
 7. ✅ send_email function + Gmail OAuth (Composio) — Gmail CONNECTED, ready to test a real send
+8. ✅ **Multi-agent intake** (2026-07-01) — split the single slow `parser_scorer` intake into
+      three focused agents orchestrated by the frontend to cut latency: `resume_extractor`
+      (stores resume_data row) + `jd_parser` (creates applications shell row) run IN PARALLEL,
+      then `fit_scorer` (judges skills → score_match → fills score/gaps/topics/next_action/
+      resume_id via inlined distilled context, 2 calls). `parser_scorer` kept for the
+      re-evaluate (UPDATE) path only. Frontend orchestration in `AddJobModal.submit()`
+      (Promise.all + DB polling via new `pollNewResume`/`countResumes`/`getDefaultResume`).
+      New agents need `lemma pods import .` to deploy.
 
 ## 10. Next / pending
 - [x] **Test a real send** end-to-end — ✅ DONE 2026-06-27, email received. Sender Gmail account
@@ -359,6 +367,35 @@ escape but it weakens TLS — get explicit user OK first.)
       choice still wins). (3) Cover-letter generated **on demand** (outreach_writer EMAIL vs
       COVER_LETTER modes) to keep the email draft fast. (4) Slimmed `agentContextBlock` (parsed resume
       fields + capped JD) to cut prompt tokens. (5) Removed "withdrawn" stage everywhere.
+
+- [x] **LinkedIn outreach channel + cover-letter removal + detail-page UX** — ✅ BUILT 2026-07-01
+      (board rebuilt; deploy = `lemma pods import .` for the agent/table + `lemma app deploy`).
+      (1) **LinkedIn draft channel** — added a THIRD mode to `outreach_writer` (EMAIL + LINKEDIN; no
+      new agent — reuses the shared `agentContextBlock`). LINKEDIN mode writes ONLY a new
+      `applications.linkedin_message` TEXT column: a short (<600 char) copy-paste note. **Draft-only —
+      we NEVER send on LinkedIn** (no sanctioned API; keeps us ToS-safe). Board OutreachSection got an
+      **Email / LinkedIn toggle**; LinkedIn tab = Generate → message + live char count (300 cap hint) +
+      Copy-to-clipboard + Regenerate. NO send path.
+      (2) **Cover letter feature REMOVED entirely** — dropped COVER_LETTER mode, the cover-letter UI
+      (display/buttons), and the dead zero-dependency PDF writer + `base64`/`textwrap` imports from
+      `send_email`. Also fixed the agent's false "attached cover letter" claim (nothing was ever
+      attached — Composio needs an s3key, not bytes; the résumé already goes out as a signed LINK).
+      **KEPT the `cover_letter` column** in the bundle (unused) so the importer doesn't try to drop a
+      populated column — zero-risk.
+      (3) **CV indicator** — email draft now shows a "📎 Your résumé will be included (as a secure
+      download link)" chip when `resume_file` is set (or a hint to add one). Reflects what actually
+      sends (signed link, not attachment).
+      (4) **Detail-page UI polish:** every panel now uses the same bold `panel-title` header
+      (Outreach/Follow-up/Action plan/Prep/Resume). Role-details sub-sections got a `.subsections`
+      class (dividers + spacing) so they stop blurring together. Split the whole card into **two
+      tabs** — **Overview & Prep** (role details, action plan, interview prep, JD; resume-update on the
+      side) and **Outreach & Manage** (outreach + follow-up; Manage panel on the side). Tabs are a
+      compact themed segmented control.
+      - 🐛 **THEME-VAR FIX:** the tabs/toggle first used `var(--accent)`/`var(--text)` which **don't
+        exist** in this palette (it's `--gold` / `--ink`), so the active pill was invisible
+        (transparent). Fixed to `--gold` bg + dark `#1c1a17` text everywhere.
+      - Detail page width: `.page.detail` → `max-width: 1200px; margin: 0 auto` (wider than the old
+        1120/760 but with visible gutters so it reads as centered).
 
 ### (superseded) Resume file storage + CV email attachment (planned, native Lemma files)
 - Lemma file system AUTO-CONVERTS uploaded PDFs to text: `lemma file upload <pdf> /me/...` then

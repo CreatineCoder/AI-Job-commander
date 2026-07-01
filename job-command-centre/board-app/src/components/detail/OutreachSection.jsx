@@ -6,15 +6,20 @@ import { pollChange, gmailAuthUrl, getResume, getProfile, signedFileUrl } from "
 import { agentContextBlock } from "../../lib/prompt.js";
 
 // Outreach workflow: generate → review/approve → send a tailored recruiter email.
+// Also supports a LinkedIn channel (draft-only — copy/paste, we never send on LinkedIn).
 export default function OutreachSection({ r, id, getContact }) {
   const { client, reload, gmail } = useApp();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // {spin,text} | {html}
   const [editing, setEditing] = useState(false);
+  const [channel, setChannel] = useState("email"); // "email" | "linkedin"
+  const [copied, setCopied] = useState(false);
   const editRef = useRef(null);
 
   const os = field(r, "outreach_status") || "none";
   const hasDraft = !!field(r, "draft_message");
+  const liMsg = field(r, "linkedin_message") || "";
+  const hasCv = !!field(r, "resume_file"); // a résumé PDF is on file → emailed as a signed link
 
   function setText(text, spin = false) {
     setStatus({ spin, text });
@@ -34,9 +39,8 @@ export default function OutreachSection({ r, id, getContact }) {
       "EMAIL mode. Draft outreach for application id: " +
       id +
       ". ALL context you need is provided below — do NOT read any tables. Write email_subject and " +
-      "draft_message (the recruiter email) and set outreach_status to 'drafted'. Do NOT write " +
-      "cover_letter (it is generated separately). Persist with a SINGLE update to the applications " +
-      "row id=" +
+      "draft_message (the recruiter email) and set outreach_status to 'drafted'. Persist with a " +
+      "SINGLE update to the applications row id=" +
       id +
       " (do not change status, resume_id, or create new rows).\n\n" +
       agentContextBlock(r, resume, profile);
@@ -55,36 +59,49 @@ export default function OutreachSection({ r, id, getContact }) {
     setBusy(false);
   }
 
-  // Cover letter is generated on demand (separate, slower call) — keeps the email fast.
-  async function genCover() {
+  // LinkedIn message — draft-only. The operator copies it and pastes into LinkedIn
+  // themselves; we never send on LinkedIn (no sanctioned API, and it keeps us ToS-safe).
+  async function genLinkedIn() {
     setBusy(true);
-    setText("Writing the cover letter… (~20–40s)", true);
-    const oldCover = String(field(r, "cover_letter") || "");
+    setText("Drafting the LinkedIn message… (~20–40s)", true);
+    const oldMsg = String(liMsg || "");
     const [resume, profile] = await Promise.all([
       getResume(client, field(r, "resume_id")),
       getProfile(client),
     ]);
     const msg =
-      "COVER_LETTER mode. Write ONLY the cover_letter for application id: " +
+      "LINKEDIN mode. Write ONLY the linkedin_message for application id: " +
       id +
-      ". ALL context is provided below — do NOT read any tables. Do NOT touch email_subject, " +
-      "draft_message or outreach_status. Persist with a SINGLE update to the applications row id=" +
+      ". ALL context is provided below — do NOT read any tables. This is a short message the " +
+      "operator will copy and paste into LinkedIn themselves — do NOT touch email_subject, " +
+      "draft_message or outreach_status. Persist with a SINGLE update to the " +
+      "applications row id=" +
       id +
       ".\n\n" +
       agentContextBlock(r, resume, profile);
     try {
       await client.agents.run(OUTREACH, msg);
-      const ok = await pollChange(client, id, "cover_letter", oldCover, 90000);
+      const ok = await pollChange(client, id, "linkedin_message", oldMsg, 90000);
       if (ok) {
         await reload();
         setStatus(null);
       } else {
-        setText("Still writing — reopen the card shortly.");
+        setText("Still drafting — reopen the card shortly.");
       }
     } catch (e) {
       setText("Failed: " + ((e && e.message) || "error"));
     }
     setBusy(false);
+  }
+
+  async function copyLinkedIn() {
+    try {
+      await navigator.clipboard.writeText(liMsg);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      setText("Couldn't copy — select the text and copy manually.");
+    }
   }
 
   async function approve() {
@@ -105,7 +122,6 @@ export default function OutreachSection({ r, id, getContact }) {
       await client.records.update(TABLE, id, {
         outreach_status: "none",
         draft_message: "",
-        cover_letter: "",
         email_subject: "",
       });
       await reload();
@@ -214,116 +230,208 @@ export default function OutreachSection({ r, id, getContact }) {
       ? "✓ approved — ready to send"
       : "awaiting your review";
 
+  const tabStyle = (active) => ({
+    flex: 1,
+    padding: "0.4rem 0.6rem",
+    cursor: "pointer",
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    background: active ? "var(--gold)" : "transparent",
+    color: active ? "#1c1a17" : "var(--muted)",
+    border: "none",
+    borderRadius: "8px",
+  });
+
   return (
     <div>
-      <label style={{ marginTop: 0 }}>Outreach</label>
-      {field(r, "email_subject") && (
-        <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>{field(r, "email_subject")}</div>
-      )}
-      {hasDraft ? (
+      <div className="panel-title">Outreach</div>
+
+      {/* Channel toggle: recruiter email vs. LinkedIn note (draft-only). */}
+      <div
+        style={{
+          display: "flex",
+          gap: "0.25rem",
+          background: "var(--paper)",
+          border: "1px solid var(--line)",
+          borderRadius: "10px",
+          padding: "0.25rem",
+          marginBottom: "0.6rem",
+        }}
+      >
+        <button style={tabStyle(channel === "email")} onClick={() => setChannel("email")} disabled={busy}>
+          Email
+        </button>
+        <button
+          style={tabStyle(channel === "linkedin")}
+          onClick={() => setChannel("linkedin")}
+          disabled={busy}
+        >
+          LinkedIn
+        </button>
+      </div>
+
+      {channel === "linkedin" ? (
         <>
-          <div
-            className="val"
-            style={{
-              background: "var(--paper)",
-              border: "1px solid var(--line)",
-              borderRadius: "10px",
-              padding: "0.7rem",
-            }}
-          >
-            {field(r, "draft_message")}
+          <div style={{ color: "var(--muted)", fontSize: "0.82rem", marginBottom: "0.5rem" }}>
+            A short message to <b>copy and paste into LinkedIn</b> yourself (connection note or
+            InMail). We don't send on LinkedIn — this is draft-only.
           </div>
-          {field(r, "cover_letter") && (
-            <details style={{ marginTop: "0.5rem" }}>
-              <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: "0.85rem" }}>
-                Cover letter
-              </summary>
+          {liMsg ? (
+            <>
               <div
-                classNaestion on what we would be building as nme="val"
+                className="val"
                 style={{
-                  marginTop: "0.4rem",
                   background: "var(--paper)",
                   border: "1px solid var(--line)",
                   borderRadius: "10px",
                   padding: "0.7rem",
+                  whiteSpace: "pre-wrap",
                 }}
               >
-                {field(r, "cover_letter")}
+                {liMsg}
               </div>
-            </details>
-          )}
-          <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
-            Status: {badge}
-          </div>
-          {os === "drafted" && (
+              <div style={{ marginTop: "0.3rem", fontSize: "0.75rem", color: "var(--muted)" }}>
+                {liMsg.length} characters (LinkedIn connection notes cap at 300).
+              </div>
+              <div className="row2">
+                <button className="btn primary" onClick={copyLinkedIn} disabled={busy}>
+                  {copied ? "✓ Copied" : "Copy message"}
+                </button>
+                <button className="btn" onClick={genLinkedIn} disabled={busy}>
+                  Regenerate
+                </button>
+              </div>
+            </>
+          ) : (
             <div className="row2">
-              <button className="btn primary" onClick={approve} disabled={busy}>
-                Approve draft
-              </button>
-              <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
-                Edit
-              </button>
-              <button className="btn" onClick={gen} disabled={busy}>
-                Regenerate
-              </button>
-              <button className="btn danger" onClick={reject} disabled={busy}>
-                Reject
-              </button>
-            </div>
-          )}
-          {os === "approved" && (
-            <div className="row2">
-              <button className="btn primary" onClick={send} disabled={busy}>
-                Send email
-              </button>
-              <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
-                Edit
-              </button>
-              <button className="btn" onClick={gen} disabled={busy}>
-                Regenerate
-              </button>
-            </div>
-          )}
-          {os === "sent" && (
-            <div className="row2">
-              <button className="btn primary" onClick={send} disabled={busy}>
-                Resend email
-              </button>
-              <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
-                Edit
-              </button>
-              <button className="btn" onClick={gen} disabled={busy}>
-                Draft again
-              </button>
-            </div>
-          )}
-          {editing && (
-            <div style={{ marginTop: "0.5rem" }}>
-              <textarea ref={editRef} defaultValue={String(field(r, "draft_message") || "")} autoFocus />
-              <button
-                className="btn primary"
-                style={{ marginTop: "0.5rem" }}
-                onClick={saveEdit}
-                disabled={busy}
-              >
-                Save draft
+              <button className="btn primary" onClick={genLinkedIn} disabled={busy}>
+                Generate LinkedIn message
               </button>
             </div>
           )}
         </>
       ) : (
         <>
-          <div style={{ color: "var(--muted)", fontSize: "0.86rem", marginBottom: "0.5rem" }}>
-            Generate a tailored recruiter email + cover letter for this role. You review and approve
-            before anything is sent.
-          </div>
-          <div className="row2">
-            <button className="btn primary" onClick={gen} disabled={busy}>
-              Generate outreach
-            </button>
-          </div>
+          {field(r, "email_subject") && (
+            <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>{field(r, "email_subject")}</div>
+          )}
+          {hasDraft ? (
+            <>
+              <div
+                className="val"
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "10px",
+                  padding: "0.7rem",
+                }}
+              >
+                {field(r, "draft_message")}
+              </div>
+              {/* Attachments summary — what actually rides along with the email. */}
+              <div
+                style={{
+                  marginTop: "0.5rem",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.4rem",
+                  alignItems: "center",
+                  fontSize: "0.8rem",
+                }}
+              >
+                {hasCv ? (
+                  <span
+                    style={{
+                      background: "var(--paper)",
+                      border: "1px solid var(--line)",
+                      borderRadius: "999px",
+                      padding: "0.2rem 0.6rem",
+                      color: "var(--ink)",
+                    }}
+                  >
+                    📎 Your résumé will be included (as a secure download link)
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--muted)" }}>
+                    No résumé on file — add this job with a résumé PDF to include one.
+                  </span>
+                )}
+              </div>
+              <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
+                Status: {badge}
+              </div>
+              {os === "drafted" && (
+                <div className="row2">
+                  <button className="btn primary" onClick={approve} disabled={busy}>
+                    Approve draft
+                  </button>
+                  <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
+                    Edit
+                  </button>
+                  <button className="btn" onClick={gen} disabled={busy}>
+                    Regenerate
+                  </button>
+                  <button className="btn danger" onClick={reject} disabled={busy}>
+                    Reject
+                  </button>
+                </div>
+              )}
+              {os === "approved" && (
+                <div className="row2">
+                  <button className="btn primary" onClick={send} disabled={busy}>
+                    Send email
+                  </button>
+                  <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
+                    Edit
+                  </button>
+                  <button className="btn" onClick={gen} disabled={busy}>
+                    Regenerate
+                  </button>
+                </div>
+              )}
+              {os === "sent" && (
+                <div className="row2">
+                  <button className="btn primary" onClick={send} disabled={busy}>
+                    Resend email
+                  </button>
+                  <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
+                    Edit
+                  </button>
+                  <button className="btn" onClick={gen} disabled={busy}>
+                    Draft again
+                  </button>
+                </div>
+              )}
+              {editing && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <textarea ref={editRef} defaultValue={String(field(r, "draft_message") || "")} autoFocus />
+                  <button
+                    className="btn primary"
+                    style={{ marginTop: "0.5rem" }}
+                    onClick={saveEdit}
+                    disabled={busy}
+                  >
+                    Save draft
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ color: "var(--muted)", fontSize: "0.86rem", marginBottom: "0.5rem" }}>
+                Generate a tailored recruiter email for this role. You review and approve before
+                anything is sent.
+              </div>
+              <div className="row2">
+                <button className="btn primary" onClick={gen} disabled={busy}>
+                  Generate outreach
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
+
       {status && (
         <div style={{ marginTop: "0.6rem", color: "var(--muted)", fontSize: "0.82rem" }}>
           {status.html ? (

@@ -2,8 +2,6 @@
 #output_type_name: SendEmailResult
 #function_name: send_email
 
-import base64
-import textwrap
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from lemma_sdk import FunctionContext, Pod
@@ -130,121 +128,6 @@ def _html_email(body_text, profile, resume_url=""):
         + _signature(profile)
         + "</td></tr></table></td></tr></table></body></html>"
     )
-
-
-# ---- Minimal, zero-dependency PDF writer (Helvetica, wrap + paginate) --------
-
-# Smart punctuation -> Latin-1-safe equivalents (Helvetica has no em-dash/curly quotes).
-_PUNCT = {
-    "—": "-", "–": "-", "‒": "-", "−": "-",
-    "‘": "'", "’": "'", "“": '"', "”": '"',
-    "…": "...", "•": "-", " ": " ",
-}
-
-
-def _normalize(s):
-    for k, v in _PUNCT.items():
-        s = s.replace(k, v)
-    return s
-
-
-def _pdf_escape(s):
-    s = _normalize(s)
-    return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-
-
-def _wrap_para(text, width=92):
-    out = []
-    for raw in str(text or "").replace("\r\n", "\n").split("\n"):
-        if not raw.strip():
-            out.append("")  # blank line between paragraphs
-            continue
-        out.extend(textwrap.wrap(raw.strip(), width=width) or [""])
-    return out
-
-
-def _make_cover_letter_pdf(body_text, header_lines):
-    """Build a simple multi-page A4-ish PDF from plain text. Returns bytes."""
-    PAGE_W, PAGE_H = 595, 842          # A4 points
-    LEFT, TOP, BOTTOM = 64, 780, 64
-    LEAD = 16
-    FONT_SIZE = 11
-
-    # Compose all lines: bold header block, blank, then wrapped body.
-    lines = []  # (text, bold)
-    for h in header_lines:
-        if h:
-            lines.append((h, True))
-    if header_lines:
-        lines.append(("", False))
-    for ln in _wrap_para(body_text):
-        lines.append((ln, False))
-
-    # Paginate.
-    pages = []
-    cur = []
-    y = TOP
-    for text, bold in lines:
-        if y < BOTTOM:
-            pages.append(cur)
-            cur = []
-            y = TOP
-        cur.append((text, bold, y))
-        y -= LEAD
-    if cur:
-        pages.append(cur)
-    if not pages:
-        pages = [[]]
-
-    # Build a content stream per page.
-    def stream_for(page):
-        parts = []
-        for text, bold, y in page:
-            if not text:
-                continue
-            font = "F2" if bold else "F1"
-            parts.append(
-                "BT /%s %d Tf %d %d Td (%s) Tj ET"
-                % (font, FONT_SIZE, LEFT, y, _pdf_escape(text))
-            )
-        return "\n".join(parts).encode("latin-1", "replace")
-
-    # Assemble PDF objects.
-    objs = []  # raw bytes per object body (without "N 0 obj")
-    # 1 catalog, 2 pages, fonts 3/4, then per page: page obj + content obj.
-    n_pages = len(pages)
-    page_obj_ids = [5 + 2 * i for i in range(n_pages)]
-    content_obj_ids = [6 + 2 * i for i in range(n_pages)]
-
-    objs.append((1, b"<< /Type /Catalog /Pages 2 0 R >>"))
-    kids = " ".join("%d 0 R" % pid for pid in page_obj_ids)
-    objs.append((2, ("<< /Type /Pages /Count %d /Kids [%s] >>" % (n_pages, kids)).encode()))
-    objs.append((3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"))
-    objs.append((4, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"))
-    for i, page in enumerate(pages):
-        pid, cid = page_obj_ids[i], content_obj_ids[i]
-        objs.append((pid, (
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] "
-            "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> "
-            "/Contents %d 0 R >>" % (PAGE_W, PAGE_H, cid)).encode()))
-        body = stream_for(page)
-        objs.append((cid, b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream"))
-
-    objs.sort(key=lambda o: o[0])
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = {}
-    for num, body in objs:
-        offsets[num] = len(out)
-        out += ("%d 0 obj\n" % num).encode() + body + b"\nendobj\n"
-    xref_pos = len(out)
-    max_obj = max(offsets)
-    out += ("xref\n0 %d\n" % (max_obj + 1)).encode()
-    out += b"0000000000 65535 f \n"
-    for num in range(1, max_obj + 1):
-        out += ("%010d 00000 n \n" % offsets.get(num, 0)).encode()
-    out += ("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF"
-            % (max_obj + 1, xref_pos)).encode()
-    return bytes(out)
 
 
 async def send_email(ctx: FunctionContext, data: SendEmailInput) -> SendEmailResult:

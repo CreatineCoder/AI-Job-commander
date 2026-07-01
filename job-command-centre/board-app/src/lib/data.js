@@ -111,6 +111,59 @@ export async function pollNew(client, before, timeoutMs) {
   return null;
 }
 
+// Count the resume_data rows (baseline before creating a new version).
+export async function countResumes(client) {
+  try {
+    const resp = await client.records.list("resume_data", { limit: 200 });
+    return listOf(resp).length;
+  } catch (e) {
+    return 0;
+  }
+}
+
+// Poll resume_data until a brand-new row appears (count grows past `before`),
+// returning the newest row so the caller gets its id + structured fields.
+export async function pollNewResume(client, before, timeoutMs) {
+  const start = Date.now();
+  do {
+    try {
+      const resp = await client.records.list("resume_data", { limit: 200 });
+      const rows = listOf(resp);
+      if (rows.length > before) {
+        const sorted = [...rows].sort(
+          (a, b) =>
+            (Date.parse(field(b, "created_at") || "") || 0) -
+            (Date.parse(field(a, "created_at") || "") || 0)
+        );
+        return sorted[0] || null;
+      }
+    } catch (e) {
+      /* retry */
+    }
+    if (Date.now() - start >= timeoutMs) break;
+    await sleep(POLL_MS);
+  } while (Date.now() - start < timeoutMs);
+  return null;
+}
+
+// The user's default resume version (is_default=true), else the newest, else null.
+export async function getDefaultResume(client) {
+  try {
+    const resp = await client.records.list("resume_data", { limit: 200 });
+    const rows = listOf(resp);
+    if (!rows.length) return null;
+    const def = rows.filter((r) => field(r, "is_default") === true)[0];
+    if (def) return def;
+    return [...rows].sort(
+      (a, b) =>
+        (Date.parse(field(b, "created_at") || "") || 0) -
+        (Date.parse(field(a, "created_at") || "") || 0)
+    )[0];
+  } catch (e) {
+    return null;
+  }
+}
+
 // --- Resume PDF upload (native Lemma files: PDF auto-converts to text) ----------
 
 async function bytesToText(res) {

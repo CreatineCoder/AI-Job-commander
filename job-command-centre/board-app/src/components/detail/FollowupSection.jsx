@@ -259,9 +259,9 @@ export default function FollowupSection({ r, id, getContact }) {
 
   return (
     <div>
-      <label style={{ marginTop: 0 }}>
+      <div className="panel-title">
         Follow-up{field(f, "stage") ? " · " + field(f, "stage") : ""}
-      </label>
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
         <span style={{ color: "var(--muted)", fontSize: "0.86rem" }}>
           {lbl}

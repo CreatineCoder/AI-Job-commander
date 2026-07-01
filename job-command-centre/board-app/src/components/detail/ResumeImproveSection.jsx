@@ -53,7 +53,7 @@ export default function ResumeImproveSection({ r, id }) {
 
   return (
     <div>
-      <label style={{ marginTop: 0 }}>Resume improvements</label>
+      <div className="panel-title">Resume improvements</div>
       <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
         <span style={{ color: "var(--muted)", fontSize: "0.86rem" }}>
           Have you made the suggested fixes to your resume?

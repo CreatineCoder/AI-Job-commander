@@ -118,7 +118,7 @@ export default function InterviewPrepSection({ r, id }) {
 
   return (
     <div>
-      <label style={{ marginTop: 0 }}>{copy.label}</label>
+      <div className="panel-title">{copy.label}</div>
 
       {prep && prep.sections.length > 0 ? (
         <>
@@ -148,7 +148,7 @@ export default function InterviewPrepSection({ r, id }) {
               onClick={generate}
               disabled={busy}
             >
-              {stale ? "Regenerate for " + stage : "Regenerate"}
+              {stale ? "Regenerate for " + stage : "Regenerate " + copy.label.toLowerCase()}
             </button>
           </div>
         </>

@@ -95,14 +95,14 @@ export default function TodoSection({ r, id }) {
 
   return (
     <div>
-      <label style={{ marginTop: 0 }}>
+      <div className="panel-title">
         Action plan{planned ? " · " + planned : ""}
         {items.length > 0 && (
           <span style={{ color: "var(--muted)", fontWeight: 400, fontSize: "0.8rem" }}>
             {"  " + doneN + "/" + items.length + " done"}
           </span>
         )}
-      </label>
+      </div>
 
       {items.length > 0 ? (
         <>

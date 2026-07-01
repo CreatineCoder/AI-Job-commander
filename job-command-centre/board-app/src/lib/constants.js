@@ -7,7 +7,12 @@ export const STAGES = [
   { k: "rejected", label: "Rejected", c: "var(--rejected)" },
 ];
 
-export const AGENT = "parser_scorer";
+export const AGENT = "parser_scorer"; // re-evaluate (UPDATE) path only
+// Intake is split into three focused agents, orchestrated by the frontend:
+// resume_extractor + jd_parser run in parallel, then fit_scorer scores & fills the row.
+export const RESUME_EXTRACTOR = "resume_extractor";
+export const JD_PARSER = "jd_parser";
+export const FIT_SCORER = "fit_scorer";
 export const TABLE = "applications";
 export const GRANT_KEYS = ["gmail_read", "gmail_write", "calendar_write"];
 export const OUTREACH = "outreach_writer";

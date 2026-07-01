@@ -17,6 +17,7 @@
     { "name": "suggested_topics", "type": "JSON" },
     { "name": "email_subject", "type": "TEXT", "max_length": 240 },
     { "name": "draft_message", "type": "TEXT" },
+    { "name": "linkedin_message", "type": "TEXT" },
     { "name": "cover_letter", "type": "TEXT" },
     { "name": "outreach_status", "type": "ENUM", "default": "none",
       "options": ["none", "drafted", "approved", "sent"] },
