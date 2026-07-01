@@ -1,15 +1,41 @@
 import { useRef, useState } from "react";
 import Modal from "./Modal.jsx";
 import { useApp } from "../AppContext.jsx";
-import { AGENT } from "../lib/constants.js";
-import { pollNew } from "../lib/data.js";
+import { AGENT, TABLE } from "../lib/constants.js";
+import { field } from "../lib/helpers.js";
+import { pollNew, uploadResumePdf } from "../lib/data.js";
 
 export default function AddJobModal({ onClose }) {
   const { client, rows, reload } = useApp();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // { spin, text }
+  const [resumePath, setResumePath] = useState(""); // uploaded PDF path, if any
   const rzRef = useRef(null);
   const jdRef = useRef(null);
+
+  // Upload a resume PDF → Lemma auto-extracts text → fill the resume box.
+  async function onPdf(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setBusy(true);
+    setStatus({ spin: true, text: "Uploading & extracting text from your PDF…" });
+    try {
+      const { path, text } = await uploadResumePdf(client, file);
+      setResumePath(path);
+      if (text) {
+        rzRef.current.value = text;
+        setStatus({ spin: false, text: "Extracted resume text ✓ — review below, then add the job." });
+      } else {
+        setStatus({
+          spin: false,
+          text: "Uploaded, but couldn't read text yet. You can paste the resume text manually.",
+        });
+      }
+    } catch (err) {
+      setStatus({ spin: false, text: "Upload failed: " + ((err && err.message) || "error") });
+    }
+    setBusy(false);
+  }
 
   async function submit() {
     const jd = jdRef.current.value.trim();
@@ -31,8 +57,16 @@ export default function AddJobModal({ onClose }) {
           jd;
       await client.agents.run(AGENT, msg);
       setStatus({ spin: true, text: "Agent is parsing & scoring…" });
-      const found = await pollNew(client, before, 90000);
-      if (found) {
+      const newRow = await pollNew(client, before, 90000);
+      if (newRow) {
+        // Link the uploaded PDF to the new application so it can be emailed as a CV link.
+        if (resumePath && field(newRow, "id")) {
+          try {
+            await client.records.update(TABLE, field(newRow, "id"), { resume_file: resumePath });
+          } catch (e) {
+            /* non-fatal */
+          }
+        }
         await reload();
         onClose();
       } else {
@@ -55,10 +89,18 @@ export default function AddJobModal({ onClose }) {
       <label>
         Resume{" "}
         <span style={{ textTransform: "none", color: "var(--muted)" }}>
-          (leave blank to use your Base Resume)
+          (upload a PDF, paste text, or leave blank to use your Base Resume)
         </span>
       </label>
-      <textarea ref={rzRef} placeholder="Paste the resume text for this application…" />
+      <div style={{ marginBottom: "0.4rem" }}>
+        <input type="file" accept="application/pdf" onChange={onPdf} disabled={busy} />
+        {resumePath && (
+          <span style={{ marginLeft: "0.5rem", color: "var(--muted)", fontSize: "0.78rem" }}>
+            PDF attached — will be sent as a CV link.
+          </span>
+        )}
+      </div>
+      <textarea ref={rzRef} placeholder="Paste the resume text, or upload a PDF above…" />
       <label>Job description</label>
       <textarea ref={jdRef} placeholder="Paste the full job description here…" />
       <div className="row2">

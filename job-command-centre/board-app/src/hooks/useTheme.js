@@ -4,9 +4,9 @@ const KEY = "lemma-app-theme";
 
 function readTheme() {
   try {
-    return localStorage.getItem(KEY) || "light";
+    return localStorage.getItem(KEY) || "dark";
   } catch (e) {
-    return "light";
+    return "dark";
   }
 }
 

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useApp } from "../../AppContext.jsx";
 import { field } from "../../lib/helpers.js";
 import { OUTREACH, TABLE } from "../../lib/constants.js";
-import { pollChange, gmailAuthUrl, getResume, getProfile } from "../../lib/data.js";
+import { pollChange, gmailAuthUrl, getResume, getProfile, signedFileUrl } from "../../lib/data.js";
 import { agentContextBlock } from "../../lib/prompt.js";
 
 // Outreach workflow: generate → review/approve → send a tailored recruiter email.
@@ -147,7 +147,11 @@ export default function OutreachSection({ r, id, getContact }) {
     setText("Saving recipient & sending via Gmail… (can take up to ~60s)", true);
     try {
       await client.records.update(TABLE, id, { contact_email: cemail, contact_name: cname });
-      const res = await client.functions.run("send_email", { input: { application_id: id } });
+      // If a résumé PDF is stored, mint a signed link so the email carries the CV.
+      const resumeUrl = await signedFileUrl(client, field(r, "resume_file"));
+      const res = await client.functions.run("send_email", {
+        input: { application_id: id, resume_url: resumeUrl },
+      });
       const out = (res && (res.output_data || res.result || res.data)) || res;
       if (out && out.status === "sent") {
         gmail.connected = true;
@@ -282,6 +286,12 @@ export default function OutreachSection({ r, id, getContact }) {
           )}
           {os === "sent" && (
             <div className="row2">
+              <button className="btn primary" onClick={send} disabled={busy}>
+                Resend email
+              </button>
+              <button className="btn" onClick={() => setEditing(true)} disabled={busy}>
+                Edit
+              </button>
               <button className="btn" onClick={gen} disabled={busy}>
                 Draft again
               </button>

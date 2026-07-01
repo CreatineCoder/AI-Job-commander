@@ -2,7 +2,7 @@
   "name": "user_profile",
   "primary_key_column": "id",
   "enable_rls": true,
-  "visibility": "POD",
+  "visibility": "PUBLIC",
   "columns": [
     { "name": "full_name", "type": "TEXT", "max_length": 160 },
     { "name": "email", "type": "TEXT", "max_length": 240 },

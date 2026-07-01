@@ -12,4 +12,5 @@ export const TABLE = "applications";
 export const GRANT_KEYS = ["gmail_read", "gmail_write", "calendar_write"];
 export const OUTREACH = "outreach_writer";
 export const ORG_ID = "019eff08-dcc4-77e7-b25e-f68201fb0810";
+export const POD_ID = "019f03b0-09fb-74ea-891d-8acf9dbd7881";
 export const GMAIL_AUTH_CONFIG_ID = "019f04d3-26fb-742a-9b9c-993a6ae55305";

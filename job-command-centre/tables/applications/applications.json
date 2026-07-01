@@ -2,7 +2,7 @@
   "name": "applications",
   "primary_key_column": "id",
   "enable_rls": true,
-  "visibility": "POD",
+  "visibility": "PUBLIC",
   "columns": [
     { "name": "company", "type": "TEXT", "required": true, "max_length": 240 },
     { "name": "role", "type": "TEXT", "required": true, "max_length": 240 },

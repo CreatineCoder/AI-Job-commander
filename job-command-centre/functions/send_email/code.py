@@ -23,6 +23,7 @@ def _days_for_stage(stage):
 
 class SendEmailInput(BaseModel):
     application_id: str
+    resume_url: str = ""        # optional signed CV link to include in the email
 
 
 class SendEmailResult(BaseModel):
@@ -96,7 +97,22 @@ def _signature(profile):
     )
 
 
-def _html_email(body_text, profile):
+def _cv_block(resume_url):
+    """A tasteful 'View my résumé' link block (Composio can't attach raw bytes, so
+    we link the stored CV via a signed URL instead)."""
+    if not resume_url:
+        return ""
+    return (
+        '<div style="margin-top:22px;padding:14px 16px;background:#f8fafc;'
+        'border:1px solid #e2e8f0;border-radius:10px;">'
+        '<span style="font-size:14px;color:#475569;">📎 My résumé / CV: </span>'
+        '<a href="' + _esc(resume_url) + '" style="color:#4f46e5;font-weight:600;'
+        'text-decoration:none;">View / download</a>'
+        '</div>'
+    )
+
+
+def _html_email(body_text, profile, resume_url=""):
     """Wrap a plain-text email body in a clean, branded HTML shell."""
     return (
         '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;">'
@@ -110,6 +126,7 @@ def _html_email(body_text, profile):
         "'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;font-size:15px;"
         'line-height:1.65;">'
         + _body_html(body_text)
+        + _cv_block(resume_url)
         + _signature(profile)
         + "</td></tr></table></td></tr></table></body></html>"
     )
@@ -262,48 +279,18 @@ async def send_email(ctx: FunctionContext, data: SendEmailInput) -> SendEmailRes
         profile = (_items(pod.table("user_profile").list(limit=1)) or [None])[0]
     except Exception:
         profile = None
-    html_body = _html_email(body, profile)
-
-    # Build the cover-letter PDF (recruiter-facing attachment). Non-fatal: if PDF
-    # generation fails for any reason, we still send the email without the attachment.
+    # Include the CV as a signed download link (Composio attaches only S3-hosted files
+    # by s3key, not raw bytes — a link is the reliable way to deliver the résumé).
+    html_body = _html_email(body, profile, (data.resume_url or "").strip())
     payload = {"recipient_email": to, "subject": subject, "body": html_body, "is_html": True}
-    cover = (rec.get("cover_letter") or "").strip()
-    if cover:
-        try:
-            who = (profile or {}).get("full_name") if profile else ""
-            header = [str(who or "").strip(), str(rec.get("role") or "").strip()
-                      + ((" — " + str(rec.get("company"))) if rec.get("company") else "")]
-            header = [h for h in header if h]
-            pdf_bytes = _make_cover_letter_pdf(cover, header)
-            fname = ("Cover_Letter_" + str(rec.get("company") or "application")
-                     .replace(" ", "_") + ".pdf")
-            payload["attachment"] = {
-                "name": fname,
-                "mimetype": "application/pdf",
-                "content": base64.b64encode(pdf_bytes).decode("ascii"),
-            }
-        except Exception:
-            pass  # attachment is best-effort; never block the send
 
     # Send. Do NOT pass account_id — the backend resolves the invoking user's account.
-    # If the send fails WITH an attachment, retry once WITHOUT it before giving up — a bad
-    # attachment-param shape must never block the email or be mistaken for an auth problem.
-    first_err = None
     try:
         pod.connectors.execute(GMAIL_AUTH_CONFIG, "GMAIL_SEND_EMAIL", payload)
     except Exception as e:
-        first_err = e
-        if "attachment" in payload:
-            payload.pop("attachment", None)
-            try:
-                pod.connectors.execute(GMAIL_AUTH_CONFIG, "GMAIL_SEND_EMAIL", payload)
-                first_err = None  # plain send succeeded
-            except Exception as e2:
-                first_err = e2
-    if first_err is not None:
-        # Genuine failure (most often auth/permission).
+        # Most failures here are auth/permission related.
         return SendEmailResult(status="needs_auth", to=to,
-                               message="Couldn't send (Gmail may need authorization): " + str(first_err)[:200])
+                               message="Couldn't send (Gmail may need authorization): " + str(e)[:200])
 
     now = datetime.now(timezone.utc)
     apps.update(data.application_id, {

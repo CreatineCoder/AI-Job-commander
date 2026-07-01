@@ -1,5 +1,27 @@
 import { field, listOf } from "./helpers.js";
-import { TABLE, GRANT_KEYS, ORG_ID, GMAIL_AUTH_CONFIG_ID } from "./constants.js";
+import { TABLE, GRANT_KEYS, ORG_ID, POD_ID, GMAIL_AUTH_CONFIG_ID } from "./constants.js";
+
+// Make sure the signed-in user is a member of the pod. Users who sign up via the
+// app aren't members yet, so the RLS/POD datastores reject their reads
+// ("Missing permission datastore.table.read"). We look them up and self-join if
+// needed (the pod must allow open join in its settings). Returns true if a fresh
+// join happened (caller may want to re-init so the new grants take effect).
+export async function ensureMembership(client, user) {
+  const uid =
+    user && (user.id || user.user_id || user.userId || user.sub || user.uid);
+  if (!uid) return false;
+  let isMember = false;
+  try {
+    const m = await client.podMembers.lookupByUserId(POD_ID, uid);
+    const d = (m && m.data) || m || {};
+    isMember = !!(d.id || d.pod_member_id || d.user_id || d.userId);
+  } catch (e) {
+    isMember = false; // 404 / not found → not a member yet
+  }
+  if (isMember) return false;
+  await client.pods.join(POD_ID); // throws if the pod doesn't allow open join
+  return true;
+}
 
 // An application can now have several follow-ups over time (one per stage). For
 // the board we surface a single "active" one: prefer rows not yet marked done,
@@ -71,14 +93,79 @@ export async function pollNew(client, before, timeoutMs) {
   do {
     try {
       const { rows } = await loadData(client);
-      if (rows.length > before) return true;
+      if (rows.length > before) {
+        // Return the newest application (by created_at) so callers can link to it.
+        const sorted = [...rows].sort(
+          (a, b) =>
+            (Date.parse(field(b, "created_at") || "") || 0) -
+            (Date.parse(field(a, "created_at") || "") || 0)
+        );
+        return sorted[0] || true;
+      }
     } catch (e) {
       /* retry */
     }
     if (Date.now() - start >= timeoutMs) break;
     await sleep(POLL_MS);
   } while (Date.now() - start < timeoutMs);
-  return false;
+  return null;
+}
+
+// --- Resume PDF upload (native Lemma files: PDF auto-converts to text) ----------
+
+async function bytesToText(res) {
+  if (res == null) return "";
+  if (typeof res === "string") return res;
+  if (res instanceof Blob) return await res.text();
+  if (res instanceof ArrayBuffer) return new TextDecoder().decode(res);
+  if (res.byteLength != null || res.buffer) return new TextDecoder().decode(res);
+  if (res.content != null) return String(res.content);
+  if (res.text) return typeof res.text === "function" ? await res.text() : String(res.text);
+  return String(res);
+}
+
+// Upload a resume PDF to pod files and return { path, text }. Lemma auto-derives a
+// `document.md` text child from the PDF — we poll for it (no PDF library needed).
+export async function uploadResumePdf(client, file) {
+  const safe = String(file.name || "resume.pdf").replace(/[^\w.\-]/g, "_");
+  const name = String(Date.now()) + "_" + safe;
+  const rec = await client.files.upload(file, {
+    name,
+    directoryPath: "/me/resumes",
+    searchEnabled: true,
+  });
+  const path =
+    (rec && (rec.path || (rec.data && rec.data.path))) || "/me/resumes/" + name;
+  // Conversion is async after upload — poll the derived markdown until it's ready.
+  const start = Date.now();
+  let text = "";
+  while (Date.now() - start < 45000) {
+    try {
+      const res = await client.files.children.markdown(path);
+      text = (await bytesToText(res)).trim();
+      if (text.length > 20) break;
+    } catch (e) {
+      /* not converted yet */
+    }
+    await sleep(2500);
+  }
+  return { path, text };
+}
+
+// Mint a public, expiring download URL for a stored file (for emailing a CV link).
+export async function signedFileUrl(client, path) {
+  if (!path) return "";
+  try {
+    const res = await client.files.createSignedUrl(path, {
+      expiresSeconds: 86400,
+      maxHits: 100,
+    });
+    const d = (res && res.data) || res || {};
+    // The share endpoint returns `signed_url` (not `url`).
+    return d.signed_url || d.signedUrl || d.url || "";
+  } catch (e) {
+    return "";
+  }
 }
 
 // Poll an applications row until `fieldName` changes from `oldVal`.

@@ -1,6 +1,6 @@
 # Job Command Centre — Build Progress (Session Log)
 
-> Last updated: 2026-06-29. Hackathon: Gappy.AI / Lemma SDK. Builder: Devansh (solo).
+> Last updated: 2026-07-01. Hackathon: Gappy.AI / Lemma SDK. Builder: Devansh (solo).
 > Deadline: **submit June 30** (~2 days left). Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),
 > [AI_job_architecture.drawio](AI_job_architecture.drawio).
 
@@ -306,6 +306,69 @@ Still pending before submission: bump FOLLOW_UP_DAYS 0→5 (send_email + schedul
 Composio PDF attachment format (verify via a real Send + the function-exec error), clean test rows,
 record demo video.
 
+### 🚀 DEPLOYED 2026-06-30 (board release 019f17d7)
+Shipped the full session stack after Lemma's outage cleared: interview_prep + todo_planner +
+followup_scheduler agents, interview_prep/date_reason columns, withdrawn removal, dynamic follow-up
+dates, cover-letter-on-demand, prompt trimming, all UX fixes. (Lemma had a multi-hour outage:
+503s, then an untrusted cert `YR1`→`YR2`; CLI cert-verify failures were transient — import/deploy
+eventually went through WITHOUT `--no-verify-ssl`. If it recurs, `--no-verify-ssl` is the documented
+escape but it weakens TLS — get explicit user OK first.)
+
+- [x] **Resume PDF upload + CV link in email** — ✅ DONE/DEPLOYED 2026-06-30 (board 019f1824).
+      Add-job now takes a **PDF upload**: `client.files.upload(file,{directoryPath:"/me/resumes"})` →
+      poll `client.files.children.markdown(path)` for Lemma's AUTO-EXTRACTED text (no PDF lib!) →
+      fills the resume box → normal parser_scorer flow → stores the file path in
+      `applications.resume_file`. On outreach send, the board mints a signed URL
+      (`client.files.createSignedUrl`, 24h/100 hits) and passes `resume_url` to `send_email`, which
+      renders a "📎 My résumé: View/download" block in the HTML email. Helpers: `uploadResumePdf`,
+      `signedFileUrl` (data.js); `pollNew` now returns the new row to link the file.
+      **KEY FINDING (Composio GMAIL_SEND_EMAIL schema):** `attachment` requires
+      `{name,mimetype,s3key}` (S3-hosted file ref), NOT `{...,content:base64}` — our old base64
+      attempt ALWAYS failed (so no PDF ever attached). Array form supports multiple attachments.
+      Because we can't easily produce an s3key, we deliver the CV as a signed LINK instead (user's
+      choice). Removed the dead base64 cover-letter-attachment + retry block from send_email (PDF
+      helpers left in place, unused). Limitation: signed URL expires in 24h (fine for demo; a true
+      attachment via s3key is Project-Track work).
+      - 🐛 **FIX 2026-06-30:** the CV link never appeared because `signedFileUrl` read `res.url`, but
+        the share endpoint returns `signed_url`. Fixed → CV link now renders. (Caveat: signed link is
+        `api.lemma.work/s/…` — same domain as the untrusted-cert incident, so clicking may warn until
+        Lemma's cert is fixed.)
+- [x] **Multi-user signup (pod self-join)** — ✅ DONE/DEPLOYED 2026-06-30 (board 019f18b5). New users
+      who sign up via the app aren't pod members, so RLS datastores rejected reads ("Missing
+      permission datastore.table.read"). FIX: on boot, `ensureMembership(client, user)` (data.js)
+      does `client.podMembers.lookupByUserId(POD_ID, uid)` → if not a member, `client.pods.join(POD_ID)`
+      → then load. Wired in App.jsx before ensurePermissions; added `POD_ID` to constants. REQUIRES
+      the pod setting **"Who can join → Anyone"** (any Lemma user self-adds as base User role) — set
+      in pod settings UI. Tables switched POD→**PUBLIC** + RLS (live `lemma table update --visibility
+      PUBLIC` + bundle JSONs) so members see only their own rows. (App visibility still POD but the
+      app still loads for authed non-members; membership is the real gate. Could revert tables to POD
+      now that membership works — POD+member+RLS is tighter.) NOTE: if first load right after a fresh
+      join still 403s (token predates membership), a refresh fixes it — could add auto-reinit.
+- [x] **Stage-aware Preparation section** (was "Interview prep") — ✅ DONE/DEPLOYED 2026-06-30→07-01.
+      `interview_prep` agent generalized: takes `=== STAGE ===` and writes `interview_prep` JSON as
+      `{stage, sections:[{title, items:[...]}]}` tailored per stage (screening=call prep,
+      interview=likely Qs + STAR + be-ready-for + research, offer=evaluate/negotiate — NO interview
+      content). Board InterviewPrepSection rewritten: dynamic heading/CTA/blurb per stage
+      (Screening/Interview/Offer prep), generic section+bullet render, back-compat parse of the old
+      {star,watch_outs,research} shape. Shown for screening/interview/offer stages (DetailPage gate).
+      Does NOT auto-regenerate on stage change — shows existing prep + a highlighted "Regenerate for
+      <stage>" button (explicit user action only). Column/agent name still `interview_prep` (internal).
+- [x] **Resend outreach + dark-mode default + misc** — ✅ DONE/DEPLOYED 2026-06-30→07-01.
+      (1) Outreach "sent" state now has **Resend email** (reuses the existing draft/subject/contact/CV
+      link — no re-draft) + Edit + Draft again. (2) `useTheme` default flipped light→**dark** (saved
+      choice still wins). (3) Cover-letter generated **on demand** (outreach_writer EMAIL vs
+      COVER_LETTER modes) to keep the email draft fast. (4) Slimmed `agentContextBlock` (parsed resume
+      fields + capped JD) to cut prompt tokens. (5) Removed "withdrawn" stage everywhere.
+
+### (superseded) Resume file storage + CV email attachment (planned, native Lemma files)
+- Lemma file system AUTO-CONVERTS uploaded PDFs to text: `lemma file upload <pdf> /me/...` then
+  `lemma file child /me/<pdf>/document.md` returns the extracted markdown. So NO pdf.js / PDF lib
+  needed. Uses the document-store primitive (helps the 15% SDK score). `resume_data.resume_file`
+  and `applications.resume_file` (FILE_PATH) columns ALREADY exist.
+- Plan: board uploads resume PDF → store path in resume_data.resume_file → read derived text child →
+  feed parser_scorer (unchanged) → on send, send_email attaches the stored PDF (2nd attachment
+  alongside the cover-letter PDF). ⚠️ Depends on the Composio attachment format being verified first.
+
 ### Immediate to-do (deploy + housekeeping — as of 2026-06-28)
 - [ ] **DEPLOY — nothing above is live yet.** Backend then board:
       `lemma pods import .` (creates `schedule_followup`, updates `followups`), then
@@ -318,5 +381,5 @@ record demo video.
 
 ## 11. Judging reminders
 35% problem clarity · 25% product judgment · 25% execution (working core loop) · 15% SDK use.
-Working narrow loop > ambitious broken one. Submission June 30 = problem + approach + screen
-recording + team details.
+Working narrow loop > ambitious broken one. Submission deadline extended to **July 1** = problem +
+approach + screen recording + team details.

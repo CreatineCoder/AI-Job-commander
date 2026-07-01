@@ -2,7 +2,7 @@
   "name": "resume_data",
   "primary_key_column": "id",
   "enable_rls": true,
-  "visibility": "POD",
+  "visibility": "PUBLIC",
   "columns": [
     { "name": "label", "type": "TEXT", "max_length": 160 },
     { "name": "is_default", "type": "BOOLEAN", "default": false },

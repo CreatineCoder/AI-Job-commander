@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppContext } from "./AppContext.jsx";
 import { getClient } from "./lib/lemma.js";
-import { loadData, ensurePermissions } from "./lib/data.js";
+import { loadData, ensurePermissions, ensureMembership } from "./lib/data.js";
 import { useTheme } from "./hooks/useTheme.js";
 import Loading from "./components/Loading.jsx";
 import SignIn from "./components/SignIn.jsx";
@@ -63,6 +63,21 @@ export default function App() {
           return;
         }
         setUser(auth.user);
+        // New users who signed up via the app aren't pod members yet — join so the
+        // RLS datastores become accessible (avoids "Missing permission ...read").
+        try {
+          await ensureMembership(client, auth.user);
+        } catch (e) {
+          if (!cancelled) {
+            setError(
+              "Couldn't join this workspace automatically. The pod may not allow open join yet. (" +
+                ((e && e.message) || "join failed") +
+                ")"
+            );
+            setPhase("error");
+          }
+          return;
+        }
         await ensurePermissions(client);
         await reload();
         if (!cancelled) setPhase("ready");
